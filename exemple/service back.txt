@@ -1,0 +1,664 @@
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using monopp.Library.DAL;
+using monopp.Library.Models;
+using monopp.Library.Utility;
+using System;
+using System.Linq;
+using System.Reflection;
+using System.Threading.Tasks;
+
+namespace monopp.Library.Services
+{
+    /// <summary>
+    /// Service permettant de gérer les objets de type Statuts de commandes
+    /// </summary>
+	public class EntityService
+    {
+        //Gestionnaire de paramètres
+        private IConfiguration configuration;
+
+        //Contexte de la base de données
+        private dbContext _ctx;
+
+        /// <summary>
+        /// Constructeur par défaut
+        /// </summary>
+        public EntityService(dbContext context)
+        {
+            configuration = AppConfig.GetConfig();
+            _ctx = context;
+        }
+
+        /// <summary>
+        /// Service pour afficher tous les enregistrements de type Statuts de commandes
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Statutcommande/GetAll
+        ///     {
+        ///     }
+        /// </remarks>
+        public async Task<DataSourceResult> GetAll()
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+
+            try
+            {
+                //On récupère les données de la base de données
+                var Entitys = await _ctx.Entity
+                    .Where(p => p.date_deleted == null)
+                    .AsNoTracking()
+                    .Select(p => new
+                    {
+                        p.id,
+                        p.label,
+                    })
+                    .OrderBy(x => x.label)
+                    .ToListAsync();
+
+                //On définit le résultat à retourner
+                dataResult.NbRows = Entitys.Count();
+                dataResult.TotalRows = Entitys.Count();
+                dataResult.codeReponse = CodeReponse.ok;
+                dataResult.data = Entitys;
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour rechercher les enregistrements de type Statuts de commandes
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Statutcommande/Search
+        ///     {
+        ///         "take" : 10, 
+        ///         "skip" : 0,
+        ///         "nom" : nom (varchar),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'utilisateur</param>
+        public async Task<DataSourceResult> Search(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+
+            int take;
+            int skip;
+            string field;
+            string order;
+
+            string label;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (!IsValidSearch(body))
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        //On récupère les paramètres de recherche envoyés dans le body
+                        label = (body.label != "" ? (string)body.label : null);
+
+                        //On récupère les paramètres de pagination
+                        take = int.Parse((String)body.take);
+                        skip = int.Parse((String)body.skip);
+
+                        //On récupère les paramètres de tri
+                        field = (body.field != null ? body.field : "id");
+                        order = (body.order != null ? body.order : "DESC");
+
+                        //On exécute la requête
+                        var Entitys = _ctx.Entity
+                            .Where(p => p.date_deleted == null
+                             && (label == null || (label != null && p.label.ToLower().Contains(label.ToLower()))))
+                            .AsNoTracking()
+                            .Select(p => new
+                            {
+                                p.id,
+                                p.label,
+                            })
+                            .OrderByDynamic(field, order == "desc" ? QueryableExtensions.Order.Desc : QueryableExtensions.Order.Asc);
+
+                        var resultTake = await Entitys.Skip(skip).Take(take).ToListAsync();
+
+                        //On définit le résultat à retourner
+                        dataResult.TotalRows = Entitys.Count();
+                        dataResult.NbRows = resultTake.Count();
+                        dataResult.codeReponse = CodeReponse.ok;
+                        dataResult.data = resultTake;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour récupérer le détail d'un objet de type Statuts de commandes
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Statutcommande/Load
+        ///     {
+        ///         "id" : Id de l'enregistrement de type Statuts de commandes
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'utilisateur</param>
+        public async Task<DataSourceResult> Load(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+            int id = 0;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'objet de type Statuts de commandes
+                            var _Entity = await _ctx.Entity
+                                                .Where(x => x.id == id && x.date_deleted == null)
+                                                .AsNoTracking()
+                                                .Select(p => new
+                                                {
+                                                    p.id,
+                                                    p.label,
+                                                })
+                                                .FirstOrDefaultAsync();
+
+                            if (_Entity == null)
+                            {
+                                //On définit le retour avec le détail de l'erreur
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                            else
+                            {
+                                //On définit le résultat à retourner
+                                dataResult.TotalRows = (_Entity != null ? 1 : 0);
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.data = JsonConvert.SerializeObject(_Entity);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour ajouter un objet de type Statuts de commandes
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Statutcommande/Insert
+        ///     {
+        ///         "nom" : nom (varchar),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'utilisateur</param>
+        public async Task<DataSourceResult> Insert(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (!IsValidInsert(body))
+                    {
+                        //On définit le résultat à retourner
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        //On parse les informations envoyées dans le body
+                        var data = new Entity
+                        {
+                            label = body.label,
+                        };
+
+                        //On track l'historique de modification
+                        data.date_created = DateTime.Now;
+                        data.user_created = body.user_id;
+
+                        if (IsValid(data))
+                        {
+                            //On ajoute l'objet dans le contexte de la base de données
+                            await _ctx.Entity.AddAsync(data);
+
+                            //On enregistre dans la base de données
+                            await _ctx.SaveChangesAsync();
+
+                            //On définit le résultat à retourner
+                            dataResult.codeReponse = CodeReponse.ok;
+                            dataResult.msg = "Ajouté";
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour modifier un objet de type Statuts de commandes
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Statutcommande/Update
+        ///     {
+        ///         "id" : Id de l'enregistrement de type Statuts de commandes,
+        ///         "nom" : nom (varchar),
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'utilisateur</param>
+        public async Task<DataSourceResult> Update(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body;
+            int id = 0;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'objet
+                    if (!IsValidUpdate(body))
+                    {
+                        //On définit le résultat à retourner
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'enregistrement à partir de l'id
+                            Entity Entity = _ctx.Entity
+                                .Where(p => p.date_deleted == null && p.id == id)
+                                .FirstOrDefault();
+
+                            //Si enregistrement trouvé
+                            if (Entity != null)
+                            {
+                                //On parse les données envoyées dans le body
+                                Entity.label = body.label;
+
+                                //On valide le format des différents champs
+                                if (IsValid(Entity))
+                                {
+                                    //On track l'historique de modification
+                                    Entity.date_updated = DateTime.Now;
+                                    Entity.user_updated = body.user_id;
+
+                                    //On enregistre en base de données
+                                    await _ctx.SaveChangesAsync();
+
+                                    //On définit le résultat à retourner
+                                    dataResult.codeReponse = CodeReponse.ok;
+                                    dataResult.msg = "Modifié";
+                                }
+                            }
+                            else
+                            {
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value; ;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour supprimer un objet de type Statuts de commandes
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Statutcommande/Delete
+        ///     {
+        ///         "id" : id de l'enregistrement de type Statuts de commandes
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'utilisateur</param>
+        public async Task<DataSourceResult> Delete(Object record)
+        {
+            //Déclaration des variables
+            dynamic body;
+            DataSourceResult dataResult = new DataSourceResult();
+            int id;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'enregistrement à partir de l'id
+                            Entity Entity = _ctx.Entity
+                                .Where(p => p.date_deleted == null && p.id == id)
+                                .FirstOrDefault();
+
+                            if (Entity != null)
+                            {
+                                //On track l'historique de modification
+                                Entity.date_deleted = DateTime.Now;
+                                Entity.user_deleted = body.user_id;
+
+                                //On enregistre en base de données
+                                await _ctx.SaveChangesAsync();
+
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.msg = "Supprimé";
+                            }
+                            else
+                            {
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Méthode de validation des paramètres de recherche de l'entité de type Statuts de commandes
+        /// </summary>
+        /// <param name="body">Paramètre d'aappel de l'api</param>
+        /// <returns></returns>
+        private bool IsValidSearch(dynamic body)
+        {
+            bool result = true;
+
+            //-----------------------------------------------
+            //On valide l'existence de l'ensemble des paramètres passés en paramètres
+            //-----------------------------------------------
+
+            //On vérifie l'existence du paramètre nom (nom (Entity))
+            if (body.label == null)
+            {
+                result = false;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Méthode de validation de l'entité de type Statuts de commandes
+        /// </summary>
+        /// <param name="objEntity">Entité de type Statuts de commandes</param>
+        /// <returns></returns>
+        private bool IsValid(Entity objEntity)
+        {
+            //Déclaration des variables
+            bool result = true;
+
+            //On valide le format de l'ensemble des paramètres passés en paramètres
+            new EntityValidator().Validate(objEntity, options => options.ThrowOnFailures());
+
+            //On retourne le résultat
+            return result;
+        }
+
+        /// <summary>
+        /// Méthode de validation de de l'existence des paramètres d'insertion de l'entité de type Statuts de commandes
+        /// </summary>
+        /// <param name="body">Paramètre d'aappel de l'api</param>
+        /// <returns></returns>
+        private bool IsValidInsert(dynamic body)
+        {
+            //Déclaration des variables
+            bool result = true;
+
+            //-----------------------------------------------
+            //On valide l'existence de l'ensemble des paramètres passés en paramètres
+            //-----------------------------------------------
+
+            //On vérifie l'existence du paramètre nom (nom (Entity))
+            if (body.label == null)
+            {
+                result = false;
+            }
+
+            //On retourne le résultat
+            return result;
+        }
+
+        /// <summary>
+        /// Méthode de validation de l'existence des paramètres d'update de l'entité de type Statuts de commandes
+        /// </summary>
+        /// <param name="body">Paramètre d'aappel de l'api</param>
+        /// <returns></returns>
+        private bool IsValidUpdate(dynamic body)
+        {
+            //Déclaration des variables
+            bool result = true;
+
+            //-----------------------------------------------
+            //On valide l'existence de l'ensemble des paramètres passés en paramètres
+            //-----------------------------------------------
+
+            //On vérifie l'existence du paramètre nom (nom (Entity))
+            if (body.label == null)
+            {
+                result = false;
+            }
+
+            //On retourne le résultat
+            return result;
+        }
+    }
+}

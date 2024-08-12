@@ -1,0 +1,273 @@
+<div class="progressSpinner" *ngIf="is_loading">
+  <p-progressSpinner></p-progressSpinner>
+</div>
+
+<nav *ngIf="!displayutilisateur" aria-label="breadcrumb">
+  <ol class="breadcrumb" style="padding: 5px 14px;">
+    <div class="col-10 d-flex p-1 pt-2">
+      <li class="breadcrumb-item">
+        <a [routerLink]="['/']"><i class="fa fa-home mr-2" aria-hidden="true"></i>{{ 'buttons.dossiers.Accueil' | translate }}</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a [routerLink]="['/parametrage/Utilisateurs']">{{ 'buttons.dossiers.Parametrage' | translate }}</a>
+      </li>
+      <li class="breadcrumb-item active">
+        <a>{{ 'buttons.dossiers.Utilisateurs' | translate }}</a>
+      </li>
+    </div>
+    <div class="col-2 d-flex p-0" style="text-align: right; justify-content: flex-end;">
+      <button type="submit" class="btn btn-aqua" (click)="toggleSearchPanel()" title="{{ 'buttons.dossiers.Filtrer' | translate }}">
+        <i class="fa fa-angle-down mr-2" aria-hidden="true" [ngStyle]="{'transform': isOpenSearchForm ? 'rotate(90deg)' : ''}"></i>{{ 'buttons.dossiers.Filtrer' | translate }}
+      </button>&nbsp;
+      <button type="button" class="btn btn-green" (click)="showAdd()" title="{{ 'buttons.dossiers.Ajouter' | translate }}">
+        <i class="fa fa-plus-circle mr-1"></i>{{ 'buttons.dossiers.Ajouter' | translate }}
+      </button>
+    </div>
+  </ol>
+</nav>
+
+<p-card styleClass="cm-p-card cm-p-card-flitrer np-btm mb-2 pad-filter" *ngIf="isOpenSearchForm">
+  <form [formGroup]="infosutilisateurSearch">
+    <div class="row">
+      <div class="col-md-2">
+        <div class="input-group">
+          <p-dropdown pTooltip="{{ 'buttons.dossiers.Profil' | translate }}" tooltipPosition="top" class="p-height" [options]="liste_profil"
+            formControlName="id_profil" placeholder="{{ 'buttons.dossiers.Profil' | translate }}" optionLabel="label" optionValue="id" [showClear]="true">
+          </p-dropdown>
+        </div>
+        <label class="label-input text-danger" *ngIf="IsFiledFormSearch && S.id_profil.errors">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+      </div>
+      <div class="col-md-2">
+        <input placeholder="{{ 'buttons.dossiers.Nom' | translate }}" type="text" class="form-control" formControlName="nom"
+          pTooltip="{{ 'buttons.dossiers.Nom' | translate }}" tooltipPosition="top">
+        <label class="label-input text-danger" *ngIf="IsFiledFormSearch && S.nom.errors">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+      </div>
+      <div class="col-md-2">
+        <input placeholder="{{ 'buttons.dossiers.Prenom' | translate }}" type="text" class="form-control" formControlName="prenom"
+          pTooltip="{{ 'buttons.dossiers.Prenom' | translate }}" tooltipPosition="top">
+        <label class="label-input text-danger" *ngIf="IsFiledFormSearch && S.prenom.errors">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+      </div>
+      <div class="col-md-2">
+        <input placeholder="{{ 'buttons.dossiers.Adresse_Mail' | translate }}" type="text" class="form-control"
+          formControlName="mail" pTooltip="{{ 'buttons.dossiers.Adresse_Mail' | translate }}" tooltipPosition="top">
+        <label class="label-input text-danger" *ngIf="IsFiledFormSearch && S.mail.errors">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+      </div>
+      <div class="col-md-2">
+        <input placeholder="{{ 'buttons.dossiers.Telephone' | translate }}" type="text" class="form-control"
+          formControlName="telephone" pTooltip="{{ 'buttons.dossiers.Telephone' | translate }}" tooltipPosition="top">
+        <label class="label-input text-danger" *ngIf="IsFiledFormSearch && S.telephone.errors">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+      </div>
+      <div class="col-md-2 btn-serach text-right">
+        <button type="submit" class="btn btn-aqua" (click)="searchutilisateur()" title="{{ 'buttons.dossiers.Recherche' | translate }}">
+          <i class="fa fa-search mr-1"></i>{{ 'buttons.dossiers.Recherche' | translate }}
+        </button>
+      </div>
+    </div>
+  </form>
+</p-card>
+
+<p-card class="cm-marg-card">
+  <kendo-grid style="min-height: calc(100vh - 260px) !important;" [data]="datautilisateur"
+    [skip]="gridStateutilisateur.skip" [pageSize]="gridStateutilisateur.take" [pageable]="{pageSizes:[5,10,15,20,50]}"
+    [navigable]="true" [sortable]="true" [sort]="gridStateutilisateur.sort"
+    (dataStateChange)="onStateChangeutilisateur($event)">
+    <kendo-grid-messages pagerItems="{{ 'buttons.dossiers.Resultats' | translate }}" pagerOf="{{ 'buttons.dossiers.Sur' | translate }}" pagerFirstPage="{{ 'buttons.dossiers.Premiere_Page' | translate }}"
+      pagerLastPage="{{ 'buttons.dossiers.Derniere_Page' | translate }}" pagerNextPage="{{ 'buttons.dossiers.Suivant' | translate }}" pagerPreviousPage="{{ 'buttons.dossiers.Precedent' | translate }}"
+      pagerItemsPerPage="{{ 'buttons.dossiers.Resultats_Par_Page' | translate }}">
+    </kendo-grid-messages>
+    <ng-template kendoGridNoRecordsTemplate>
+      {{ 'buttons.dossiers.Aucun_Enregistrement_Trouve' | translate }}
+    </ng-template>
+    <kendo-grid-column field="nom" title="{{ 'buttons.dossiers.Nom' | translate }}" width="150">
+      <ng-template kendoGridCellTemplate let-dataItem>
+        <span style="cursor: pointer;" (click)="showUpdate(dataItem.id,dataItem.profil)">
+          {{dataItem.nom}}
+        </span>
+      </ng-template>
+    </kendo-grid-column>
+    <kendo-grid-column field="prenom" title="{{ 'buttons.dossiers.Prenom' | translate }}" width="150"></kendo-grid-column>
+    <kendo-grid-column field="mail" title="{{ 'buttons.dossiers.Adresse_Mail' | translate }}"></kendo-grid-column>
+    <kendo-grid-column field="profil" title="{{ 'buttons.dossiers.Profil' | translate }}" width="250"></kendo-grid-column>
+    <kendo-grid-command-column title="" width="140">
+      <ng-template kendoGridCellTemplate let-dataItem>
+        <div class="text-left">
+          <i class="pi si pi-key addpadd" pTooltip="{{ 'buttons.dossiers.Modifier_Mot_De_Passe' | translate }}" tooltipPosition="left"
+            (click)="ShowDialogUpdatePWD(dataItem)"></i>
+          <i class="pi si pi-pencil addpadd" tooltipPosition="top" pTooltip="{{ 'buttons.dossiers.Modifier' | translate }}"
+            (click)="showUpdate(dataItem.id,dataItem.profil)"></i>
+          <i pTooltip="{{ 'buttons.dossiers.Supprimer' | translate }}" tooltipposition="top" (click)="deleteutilisateur(dataItem.id)"
+            class="pi si pi-trash addpadd ng-star-inserted"></i>
+        </div>
+      </ng-template>
+    </kendo-grid-command-column>
+  </kendo-grid>
+</p-card>
+
+<ng-image-fullscreen-view [images]="imageUser" [imageIndex]="selectedImageIndex" [show]="showImage"
+  (close)="closeEventHandler()"></ng-image-fullscreen-view>
+
+  <p-dialog header="{{ 'buttons.dossiers.informationsutilisateur' | translate }}" [(visible)]="displayutilisateur" [modal]="true" styleClass="dialog-padd"
+  [style]="{'max-width': '800px','background':'white','min-width':'515px','overflow':'hidden'}" [draggable]="false">
+  <div class="modal-body" style="padding: 1px !important;">
+    <form [formGroup]="infosutilisateur" (ngSubmit)="addOrUpdateutilisateur(image.files)">
+      <p-card styleClass="no_shadow bg-white">
+        <div class="row">
+          <div class="col-md-12">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Image' | translate }}</label>
+            <div class="row">
+              <div class="col-md-10">
+                <p-fileUpload #image accept=".png,.jpeg,.jpg" maxFileSize="1000000" chooseLabel="{{ 'buttons.dossiers.choisir' | translate }}">
+                  <ng-template pTemplate="content">
+                    <ul *ngIf="uploadedFiles.length>0">
+                      <li *ngFor="let file of uploadedFiles"><i class="pi pi-file"> </i> {{file.name}} - {{file.size}} bytes</li>
+                    </ul>
+                  </ng-template>
+                </p-fileUpload>
+              </div>
+              <div class="col-md-2">
+                <img class="zoom-img" *ngIf="informationsutilisateur == 'Modification utilisateur'"
+                  [src]="sanitize(imageUrl)" (click)="showLightbox(0,imageUrl)" />
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Nom' | translate }} *</label>
+            <div class="input-group"><input class="form-control" formControlName="nom" type="text"></div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.nom.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.nom.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-6">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Prenom' | translate }} *</label>
+            <div class="input-group"><input class="form-control" formControlName="prenom" type="text"></div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.prenom.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.prenom.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Adresse_Mail' | translate }} *</label>
+            <div class="input-group"><input class="form-control" formControlName="mail" type="text"></div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.mail.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.mail.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Telephone' | translate }} *</label>
+            <div class="input-group"><input class="form-control" formControlName="telephone" type="text"></div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.telephone.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.telephone.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Genre' | translate }} *</label>
+            <div class="input-group">
+              <p-dropdown class="p-height drop-overflo" [options]="liste_genre"
+                formControlName="genre" placeholder="{{ 'buttons.dossiers.Genre' | translate }}" optionLabel="label"
+                optionValue="id" [showClear]="true">
+              </p-dropdown>
+            </div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.genre.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.genre.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4" *ngIf="showmdp">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Mot_de_passe' | translate }} *</label>
+            <div class="input-group"><input formControlName="password" type="{{_shownuser ? 'text' : 'password'}}"
+                class="form-control" id="userpassword">
+              <i class="{{_shownuser ? 'userPass far fa-eye' : 'userPass far fa-eye-slash'}}" (click)="toggleuser()"></i>
+            </div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.password.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.password.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Profil' | translate }} *</label>
+            <div class="input-group">
+              <p-dropdown class="p-height drop-overflo" [options]="liste_profil"
+                formControlName="id_profil" placeholder="{{ 'buttons.dossiers.Profil' | translate }}" optionLabel="optionlabel"
+                optionValue="id" [showClear]="true">
+              </p-dropdown>
+            </div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.id_profil.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.id_profil.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Decoupage_Commercial' | translate }} *</label>
+            <div class="input-group">
+              <p-dropdown class="p-height drop-overflo" [options]="liste_decoupagecommercial" [filter]="true" filterBy="label"
+                formControlName="id_decoupagecommercial" placeholder="{{ 'buttons.dossiers.Decoupage_Commercial' | translate }}" optionLabel="label"
+                optionValue="id" [showClear]="true">
+              </p-dropdown>
+            </div>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.id_decoupagecommercial.errors?.required">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+            <label class="label-input text-danger" *ngIf="IsFiledForm && F.id_decoupagecommercial.errors?.maxlength">- {{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.De_la_part_de' | translate }}</label>
+            <div class="input-group">
+              <p-dropdown class="p-height drop-overflo" [options]="datautilisateur"
+                formControlName="id_user_pere" placeholder="{{ 'buttons.dossiers.De_la_part_de' | translate }}" optionLabel="nom"
+                optionValue="id" [showClear]="true">
+              </p-dropdown>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="col-form-label gras">{{ 'buttons.dossiers.Entity' | translate }}</label>
+            <div class="input-group">
+              <p-dropdown class="p-height drop-overflo" [options]="liste_entity"
+                formControlName="id_entity" placeholder="{{ 'buttons.dossiers.Entity' | translate }}" optionLabel="label"
+                optionValue="id" [showClear]="true">
+              </p-dropdown>
+            </div>
+          </div>
+        </div>
+        <div class="d-flex justify-content-between mt-5">
+          <div *ngIf="msgReponse" class="alert alert-danger" role="alert">
+            {{msgReponse}}
+          </div>
+          <div *ngIf="!msgReponse"></div>
+          <div class="d-flex justify-content-end">
+            <div class="mr-2">
+              <button type="button" class="btn btn-red" (click)="displayutilisateur=false"><i class="pi pi-times-circle"></i> {{ 'buttons.dossiers.Annuler' | translate }}</button>
+            </div>
+            <div>
+              <button type="submit" class="btn btn-green"><i class="pi pi-check-circle"></i> {{ 'buttons.dossiers.Valider' | translate }}</button>
+            </div>
+          </div>
+        </div>
+      </p-card>
+    </form>
+  </div>
+</p-dialog>
+
+<p-dialog header="{{ 'buttons.dossiers.Changement_Mot_De_Passe' | translate }}" [(visible)]="showDialogchangePWD" [modal]="true"
+  [contentStyle]="{'min-width':'700px','max-height':'750px', 'background':'#fff','overflow': 'auto'}">
+  <p-card styleClass="no_shadow bg-white card-pad card-padding">
+    <form [formGroup]="FormUserPWD" (ngSubmit)="changePWD()">
+      <div class="row">
+        <div class="col-md-12 mb-3" *ngIf="isHisPassword">
+          <div class="input-group">
+            <input type="{{_shownAct ? 'text' : 'password'}}" class="form-control" formControlName="currentPassword"
+              autocomplete placeholder="{{ 'buttons.dossiers.Mot_De_Passe_Actuel' | translate }} *">
+          </div>
+          <label class="label-input text-danger" *ngIf="IsFiledUserPWD && FA.currentPassword.errors">* {{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+        </div>
+        <div class="col-md-12 mb-3">
+          <div class="input-group">
+            <input type="{{_shownPass ? 'text' : 'password'}}" class="form-control" formControlName="password1"
+              autocomplete placeholder="{{ 'buttons.dossiers.Nouveau_Mot_De_Passe' | translate }} *">
+          </div>
+          <label class="label-input text-danger" *ngIf="IsFiledUserPWD && FA.password1.errors">* {{ 'buttons.dossiers.Mot_De_Passe_Invalide' | translate }}</label>
+        </div>
+        <div class="col-md-12 mb-3">
+          <div class="input-group">
+            <input type="{{_shownConfpass ? 'text' : 'password'}}" class="form-control" formControlName="password2"
+              autocomplete placeholder="{{ 'buttons.dossiers.Confirmez_Mot_De_Passe' | translate }} *">
+            <i class="{{_shownConfpass ? 'MdPass fa fa-eye' : 'MdPass fa fa-eye-slash'}}"
+              (click)="toggleConfpass()"></i>
+          </div>
+          <label class="label-input text-danger" *ngIf="IsFiledUserPWD && FA.password2.errors">* {{ 'buttons.dossiers.Mot_De_Passe_Invalide' | translate }}</label>
+        </div>
+      </div>
+      <div class="text-right">
+        <button type="button" class="btn btn-red mr-2" (click)="closeDialogPWD()"><i class="pi pi-times-circle"></i> {{ 'buttons.dossiers.Annuler' | translate }}</button>
+        <button type="submit" class="btn btn-green"><i class="pi pi-check-circle"></i> {{ 'buttons.dossiers.Valider' | translate }}</button>
+      </div>
+      <span style="font-size: 14px; color: rgb(62, 62, 160);">{{ 'buttons.dossiers.Mot_De_Passe_Consignes' | translate }}</span>
+    </form>
+  </p-card>
+</p-dialog>

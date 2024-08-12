@@ -1,0 +1,298 @@
+import { Component, OnInit } from '@angular/core';
+import { GridDataResult } from '@progress/kendo-angular-grid';
+import { FormControl, FormGroup, Validators } from "@angular/forms";
+import { entityService } from '../../../core/Metier/entity.service'
+import { SortDescriptor, State } from '@progress/kendo-data-query';
+import { StoreService } from "src/app/core/Metier/store.service";
+import Swal from 'sweetalert2';
+
+@Component({
+  selector: 'app-entity',
+  templateUrl: './entity.component.html',
+  styleUrls: ['./entity.component.scss']
+})
+
+export class entityComponent implements OnInit {
+  isOpenSearchForm: boolean = false;
+  infosentity: FormGroup;
+  infosentitySearch: FormGroup;
+  showentity: boolean = false;
+  informationsentity: any;
+  dataentity: GridDataResult;
+  is_loading: boolean = false;
+  IsFiledForm: boolean = false;
+  IsFiledFormSearch: boolean = false;
+  msgReponse = "";
+  user_id: any;
+  //Gestion du tri
+  sortgridentity: SortDescriptor[] = [{
+    field: 'id',
+    dir: 'desc'
+  }];
+
+  //Paramètres par défaut du grid
+  gridStateentity: State = {
+    sort: this.sortgridentity,
+    skip: 0,
+    take: 10
+  };
+
+  //Constructeur
+  constructor(private entityService: entityService,private storeService: StoreService) {
+    //Validateurs
+    this.infosentity = new FormGroup({
+      id: new FormControl(0),
+      label: new FormControl(null, [Validators.required, Validators.maxLength(50),]),
+    });
+
+    this.infosentitySearch = new FormGroup({
+      label: new FormControl(null, [Validators.maxLength(50),]),
+    });
+
+    this.user_id = this.storeService.get_DataSession("user_id");
+  }
+
+  //Init du constructeur
+  ngOnInit(): void {
+    this.searchentity();
+  }
+
+  //Méthode pour validation du form search
+  get S() {
+    return this.infosentitySearch.controls;
+  }
+
+  //Méthode pour validation du form ajout & modification
+  get F() {
+    return this.infosentity.controls;
+  }
+
+  //Méthode pour récupérer les enregistrements de type entity
+  getDataentity() {
+    this.entityService.getAll().subscribe(res => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+
+      if (json["codeReponse"] == 200) {
+        this.dataentity = {
+          "data": json['data'],
+          "total": json['TotalRows']
+        };
+      }
+    });
+  }
+
+  //Méthode pour rechercher les enregistrements de type entity
+  searchentity() {
+    this.is_loading = true;
+
+    if (this.infosentitySearch.invalid) {
+      this.IsFiledFormSearch = true;
+      this.is_loading = false;
+    }
+    else {
+      //Paramètres de la recherche
+      let body = {
+        label: (this.infosentitySearch.value.label != null ? this.infosentitySearch.value.label : ''),
+        take: this.gridStateentity.take,
+        skip: this.gridStateentity.skip,
+        field: this.gridStateentity.sort[0].field,
+        order: this.gridStateentity.sort[0].dir
+      }
+
+      //On appelle le service
+      this.entityService.search(body).subscribe(res => {
+        //On parse le json
+        var json = JSON.parse(res.toString());
+
+        if (json["codeReponse"] == 200) {
+          this.dataentity = {
+            "data": json['data'],
+            "total": json['TotalRows']
+          };
+        }
+
+        this.is_loading = false;
+      });
+    }
+  }
+
+  //Méthode pour ajouter ou modifier un enregistrement de type entity
+  addOrUpdateentity() {
+    //Paramètres de la recherche
+    let body: any;
+    let id = this.infosentity.value.id;
+    this.is_loading = true;
+
+    if (this.infosentity.invalid) {
+      this.IsFiledForm = true;
+      this.is_loading = false;
+    } else {
+      //Si id à 0, insert
+      if (id == 0 || id == null) {
+        //Paramètres d'appel du service d'insertion
+        body = {
+          user_id :this.user_id,
+          label: this.infosentity.value.label,
+        }
+
+        //On appelle le service d'insertion de l'enregistrement de type entity
+        this.entityService.insert(body).subscribe(res => {
+          //On parse le json
+          var json = JSON.parse(res.toString());
+          this.is_loading = false;
+
+          if (json["codeReponse"] == 200) {
+            //On rafraichit les données du grid
+            this.searchentity();
+            this.showentity = false;
+
+            //On affiche un popup de success
+            Swal.fire({
+              icon: 'success',
+              title: "Enregistrement ajouté avec succès",
+              showConfirmButton: false,
+              timer: 2000
+            })
+          }
+          else {
+            this.msgReponse = "Une erreur a eu lieu ! Veuillez essayer de nouveau.";
+          }
+        });
+      }
+      //Modification sinon
+      else {
+        //Paramètres d'appel du service d'update
+        body = {
+          user_id :this.user_id,
+          id: this.infosentity.value.id,
+          label: this.infosentity.value.label,
+        }
+
+        //On appelle le service de modification de l'enregistrement de type entity
+        this.entityService.update(body).subscribe(res => {
+          //On parse le json
+          var json = JSON.parse(res.toString());
+          this.is_loading = false;
+
+          if (json["codeReponse"] == 200) {
+            //On rafraichit les données du grid
+            this.searchentity();
+            this.showentity = false;
+
+            //On affiche un popup de success
+            Swal.fire({
+              icon: 'success',
+              title: "Enregistrement modifié avec succès",
+              showConfirmButton: false,
+              timer: 2000
+            })
+          }
+          else {
+            this.msgReponse = "Une erreur a eu lieu ! Veuillez essayer de nouveau.";
+          }
+        });
+      }
+    }
+  }
+
+  //Méthode pour récupérer le détail d'un enregistrement de type entity à partir de son id
+  getentityById(id) {
+    //Paramètres d'appel du service de récupération de détail de l'enregistrement de type entity
+    let body = {
+      id: id
+    }
+
+    //On appelle le service de récupération de détail de l'enregistrement de type entity
+    this.entityService.load(body).subscribe(res => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+
+      if (json["codeReponse"] == 200) {
+        this.informationsentity = "Modification Entity"
+        this.showentity = true;
+
+        //On parse data
+        var data = JSON.parse(json['data']);
+
+        //On remplit les champs de la popup de modification
+        this.infosentity.get('id').setValue(data.id);
+        this.infosentity.get('label').setValue(data.label);
+      }
+    });
+  }
+
+  //Méthode pour afficher/masquer le div filtrer
+  toggleSearchPanel() {
+    this.isOpenSearchForm = !this.isOpenSearchForm;
+  }
+
+  //Méthode pour afficher la popup d'ajout de entity
+  showAdd() {
+    this.IsFiledForm = false;
+    this.msgReponse = '';
+    this.infosentity.reset();
+    this.informationsentity = "Ajout Entity"
+    this.showentity = true;
+  }
+
+  //Méthode pour afficher la popup de confirmation de modification
+  showUpdate(id) {
+    this.IsFiledForm = false;
+    this.msgReponse = '';
+    this.getentityById(id);
+    this.informationsentity = "Modification Entity"
+    this.showentity = true;
+  }
+
+  //Méthode pour supprimer un enregistrement de type entity
+  deleteentity(id) {
+    //Paramètres d'appel du service de suppression
+    let body = {
+      user_id :this.user_id,
+      id: id
+    }
+
+    //On affiche la popup de confirmation
+    Swal.fire({
+      title: 'Êtes-vous sûrs de vouloir supprimer cet enregistrement ?',
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#689F38',
+      cancelButtonColor: '#d33',
+      cancelButtonText: '<i class="pi pi-times-circle"></i>  Annuler',
+      confirmButtonText: '<i class="pi pi-check-circle"></i> Valider',
+      reverseButtons: true
+    }).then((result) => {
+      //Si l'utilisateur confirme
+      if (result.isConfirmed) {
+        //On appelle le service de suppression
+        this.entityService.delete(body).subscribe(res => {
+          //On parse le json
+          var json = JSON.parse(res.toString());
+
+          //Si réponse ok
+          if (json["codeReponse"] == 200) {
+            //On rafraichit les données du grid
+            this.searchentity();
+            this.showentity = false;
+
+            //On affiche un popup de confirmation de la suppression
+            Swal.fire({
+              icon: 'success',
+              title: 'Enregistrement supprimé avec succès !',
+              showConfirmButton: false,
+              timer: 2000
+            })
+          }
+        });
+      }
+    })
+  }
+
+  //Méthode pour rafraichir le grid
+  onStateChangeentity(state: State) {
+    this.gridStateentity = state;
+    this.searchentity();
+  }
+}

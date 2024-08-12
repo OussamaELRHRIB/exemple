@@ -1,0 +1,1918 @@
+using FluentValidation;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using monopp.Library.DAL;
+using monopp.Library.Models;
+using monopp.Library.Utility;
+using System;
+using System.Collections.Generic;
+using System.IdentityModel.Tokens.Jwt;
+using System.Linq;
+using System.Reflection;
+using System.Security.Claims;
+using System.Text;
+using System.Threading.Tasks;
+using System.Net;
+using System.Configuration;
+using System.Net.Mail;
+using System.Net.Mime;
+using System.IO;
+using Serilog;
+using Serilog.Sinks.File;
+
+
+
+namespace monopp.Library.Services
+{
+    /// <summary>
+    /// Service permettant de gérer les objets de type Utilisateurs
+    /// </summary>
+	public class UtilisateurService
+    {
+        //Gestionnaire de paramètres
+        private IConfiguration configuration;
+
+        //Contexte de la base de données
+        private dbContext _ctx;
+
+        /// <summary>
+        /// Constructeur par défaut
+        /// </summary>
+        public UtilisateurService(dbContext context)
+        {
+            configuration = AppConfig.GetConfig();
+            _ctx = context;
+        }
+
+        /// <summary>
+        /// Service pour afficher tous les enregistrements de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/GetAll
+        ///     {
+        ///     }
+        /// </remarks>
+        public async Task<DataSourceResult> GetAll(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+            string keyword;
+
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+                    keyword = (body.keyword != "" ? (string)body.keyword : null);
+                    //On récupère les données de la base de données
+                    var Utilisateurs = await _ctx.Utilisateur.Where(p => p.date_deleted == null
+                    && ((keyword == null || (keyword != null && p.nom.ToLower().Contains(keyword.ToLower())))
+                    || (keyword == null || (keyword != null && p.prenom.ToLower().Contains(keyword.ToLower()))))
+                        ).AsNoTracking()
+                        .Select(p => new
+                        {
+                            p.id,
+                            full_name = p.prenom + " " + p.nom
+                        })
+                        .OrderBy(x => x.full_name)
+                        .ToListAsync();
+
+                    //On définit le résultat à retourner
+                    dataResult.NbRows = Utilisateurs.Count();
+                    dataResult.TotalRows = Utilisateurs.Count();
+                    dataResult.codeReponse = CodeReponse.ok;
+                    dataResult.data = Utilisateurs;
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour afficher tous les enregistrements de type Utilisateur
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Login
+        ///     {
+        ///         "email" : Email Utilisateur,
+        ///         "password" : Mot de passe Utilisateur (varchar),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> Login(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+
+            dynamic body = "";
+            var dictionary = new Dictionary<string, string>();
+
+            string email;
+            string password;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On récupère les paramètres de recherche envoyés dans le body
+                    email = (body.email != "" ? (string)body.email : null);
+                    password = (body.password != "" ? (string)body.password : null);
+
+                    //On crypte le password
+                    var pwd = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption(password, configuration.GetSection("Divers:EncryptionKey").Value));
+                    var id_profil_superadmin = int.Parse(configuration.GetSection("id_Super_Admin").Value);
+
+                    //On vérifie si user est un Utilisateur normal (associé à un client)
+                    var _Utilisateur = await _ctx.Utilisateur
+                                    .Where(p => p.date_deleted == null
+                                                && p.mail.ToLower().Trim() == email.ToLower().Trim()
+                                                && p.password == pwd)
+                                    .AsNoTracking()
+                                    .Select(p => new
+                                    {
+                                        p.id,
+                                        p.nom,
+                                        p.prenom,
+                                        p.mail,
+                                        p.genre,
+                                        p.isactive,
+                                        p.id_profil,
+                                        p.isupdatepassword,
+                                        p.id_decoupagecommercial,
+                                        decoupagecommercial = p.id_decoupagecommercialNavigation.label,
+                                        role = p.id_profilNavigation.label,
+                                        imageUrl = (p.image != null && p.image != "") ? configuration.GetSection("applicationUrl").Value + "/images/" + p.image : configuration.GetSection("applicationUrl").Value + "/images/" + "default-image-user.png",
+                                    })
+                                    .FirstOrDefaultAsync();
+
+                    //Si Utilisateur trouvé
+                    if (_Utilisateur != null)
+                    {
+
+
+                        var id = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption(_Utilisateur.id.ToString(), configuration.GetSection("Divers:EncryptionKey").Value));
+
+                        //on génère le token et sa durée 
+                        var XKestrelDescriptor = new SecurityTokenDescriptor
+                        {
+                            Subject = new ClaimsIdentity(new Claim[] {
+                                                                    new Claim(ClaimTypes.Actor, _Utilisateur.id.ToString()),
+                                                                    new Claim(ClaimTypes.PrimarySid, id)
+                                                                        }),
+                            Expires = DateTime.UtcNow.AddHours(24),
+                            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration.GetSection("JWTSettings:Key").Value)),
+                                                                                                  SecurityAlgorithms.HmacSha256Signature)
+                        };
+
+                        var XKestrelHandler = new JwtSecurityTokenHandler();
+                        var securityXKestrel = XKestrelHandler.CreateToken(XKestrelDescriptor);
+                        var XKestrel = XKestrelHandler.WriteToken(securityXKestrel);
+
+                        //on ajoute les infos de l'Utilisateur dans un dictionnaire
+                        dictionary.Add("XKestrel", XKestrel);
+                        dictionary.Add("user_id", _Utilisateur.id.ToString());
+                        dictionary.Add("nom", _Utilisateur.nom);
+                        dictionary.Add("prenom", _Utilisateur.prenom);
+                        dictionary.Add("isupdatepassword", _Utilisateur.isupdatepassword.ToString());
+                        dictionary.Add("user_role", _Utilisateur.id_profil.ToString());
+                        dictionary.Add("role_label", _Utilisateur.role.ToString());
+                        dictionary.Add("id_decoupagecommercial", _Utilisateur.id_decoupagecommercial != null ? _Utilisateur.id_decoupagecommercial.ToString() : "");
+                        dictionary.Add("image", _Utilisateur.imageUrl != null ? _Utilisateur.imageUrl.ToString() : "");
+
+
+                        //On récupère l'enregistrement à partir de l'id
+                        Utilisateur Utilisateur = _ctx.Utilisateur.Where(p => p.date_deleted == null && p.mail == email).FirstOrDefault();
+
+                        //Si enregistrement trouvé
+                        if (Utilisateur != null)
+                        {
+                            //On parse les données envoyées dans le body
+                            Utilisateur.isactive = true;
+                            Utilisateur.tentativecount = 0;
+                            Utilisateur.date_tent = null;
+
+                            // On vérifie si la date de mise à jour du mot de passe dépasse un mois
+                            if (Utilisateur.date_updatepassword != null && Utilisateur.date_updatepassword < DateTime.Now.AddMonths(-1))
+                            {
+                                Utilisateur.isupdatepassword = false;
+                            }
+                            //On valide le format des différents champs
+                            if (IsValid(Utilisateur))
+                            {
+                                //On enregistre en base de données
+                                await _ctx.SaveChangesAsync();
+                            }
+                        }
+                        //On définit le résultat à retourner
+                        dataResult.NbRows = 1;
+                        dataResult.TotalRows = 1;
+                        dataResult.msg = "Authentifié";
+                        dataResult.codeReponse = CodeReponse.ok;
+                    }
+                    else
+                    {
+                        Utilisateur Utilisateur = _ctx.Utilisateur.Where(p => p.date_deleted == null && p.mail == email).FirstOrDefault();
+
+                        if (Utilisateur != null)
+                        {
+                            Utilisateur.tentativecount = Utilisateur.tentativecount + 1;
+                            if (Utilisateur.date_tent == null)
+                            {
+                                Utilisateur.date_tent = DateTime.Now;
+                            }
+
+                            //On valide le format des différents champs
+                            if (IsValid(Utilisateur))
+                            {
+                                //On enregistre en base de données
+                                await _ctx.SaveChangesAsync();
+                            }
+                        }
+                        //On définit le résultat à retourner
+                        dataResult.NbRows = 0;
+                        dataResult.TotalRows = 0;
+                        dataResult.msg = "Non authentifié";
+                        dataResult.codeReponse = CodeReponse.unauthorized;
+                    }
+
+                    dataResult.data = dictionary;
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour afficher tous les enregistrements de type Utilisateur
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/cantrylogin
+        ///     {
+        ///         "email" : Email Utilisateur,
+        ///         "password" : Mot de passe Utilisateur (varchar),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> Cantrylogin(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+
+            dynamic body = "";
+            var dictionary = new Dictionary<string, string>();
+
+            string email;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On récupère les paramètres de recherche envoyés dans le body
+                    email = (body.email != "" ? (string)body.email : null);
+
+                    //On vérifie si user est un Utilisateur normal (associé à un client)
+                    var _Utilisateur = await _ctx.Utilisateur
+                          .Where(p => p.date_deleted == null
+                                      && p.mail.ToLower().Trim() == email.ToLower().Trim())
+                          .FirstOrDefaultAsync();
+
+                    //Si Utilisateur trouvé
+                    if (_Utilisateur != null)
+                    {
+                        var dateTent = _Utilisateur.date_tent;
+                        if (dateTent != null && (DateTime.Now - dateTent.Value).TotalMinutes > 5)
+                        {
+                            // Réinitialiser le compteur de tentatives
+                            _Utilisateur.tentativecount = 0;
+                            // Mettre à jour date_tent à l'heure actuelle
+                            _Utilisateur.date_tent = DateTime.Now;
+
+                            // Mettre à jour l'utilisateur dans la base de données
+                            _ctx.Utilisateur.Update(_Utilisateur);
+                            await _ctx.SaveChangesAsync();
+
+                        }
+
+                        var id = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption(_Utilisateur.id.ToString(), configuration.GetSection("Divers:EncryptionKey").Value));
+                        var decryptedPassword = CryptageHelper.Decryption(CryptageHelper.Base64StringToByteArray(_Utilisateur.password), configuration.GetSection("Divers:EncryptionKey").Value);
+                       
+                        //on génère le token et sa durée 
+                        var XKestrelDescriptor = new SecurityTokenDescriptor
+                        {
+                            Subject = new ClaimsIdentity(new Claim[] {
+                                                                    new Claim(ClaimTypes.Actor, _Utilisateur.id.ToString()),
+                                                                    new Claim(ClaimTypes.PrimarySid, id)
+                                                                        }),
+                            Expires = DateTime.UtcNow.AddHours(24),
+                            SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration.GetSection("JWTSettings:Key").Value)),
+                                                                                                  SecurityAlgorithms.HmacSha256Signature)
+                        };
+
+                        var XKestrelHandler = new JwtSecurityTokenHandler();
+                        var securityXKestrel = XKestrelHandler.CreateToken(XKestrelDescriptor);
+                        var XKestrel = XKestrelHandler.WriteToken(securityXKestrel);
+
+                        //on ajoute les infos de l'Utilisateur dans un dictionnaire
+                        dictionary.Add("user_id", (_Utilisateur.id).ToString());
+                        dictionary.Add("nom", _Utilisateur.nom);
+                        dictionary.Add("prenom", _Utilisateur.prenom);
+                        dictionary.Add("date_tent", (_Utilisateur.date_tent).ToString());
+                        dictionary.Add("isactive", (_Utilisateur.isactive).ToString());
+                        dictionary.Add("tentativecount", (_Utilisateur.tentativecount).ToString());
+                        dictionary.Add("isupdatepassword", (_Utilisateur.isupdatepassword).ToString());
+                        dictionary.Add("password", decryptedPassword);
+                        dictionary.Add("date_updatepassword", (_Utilisateur.date_updatepassword).ToString());
+
+                    }
+                    else
+                    {
+                        //On définit le résultat à retourner
+                        dataResult.NbRows = 0;
+                        dataResult.TotalRows = 0;
+                        dataResult.msg = "Non authentifié";
+                        dataResult.codeReponse = CodeReponse.unauthorized;
+                    }
+
+                    dataResult.data = dictionary;
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service de validation d'un Utilisateur, à partir d'un d'un lien envoyé par email
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/ValidateUser
+        ///     {
+        ///         "id" : Id Utilisateur
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> ValidateUser(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+
+            string _Time;
+            string id = "";
+            string id_decrypted = "";
+            int id_user = 0;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        id = (string)body.id;
+
+                        //Si id non trouvé
+                        if (id == "")
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            _Time = body.time;
+                            long time_ = long.Parse(_Time) - 77;
+                            DateTime ts = DateTime.Now;
+                            DateTime oldDate = new DateTime(time_);
+                            TimeSpan ts_ = ts - oldDate;
+                            bool isValide = (int)ts_.TotalMinutes < 60;
+
+                            //Si la demande est toujours valide
+                            if (isValide)
+                            {
+                                //On décrypte l'id
+                                id_decrypted = CryptageHelper.Decryption(CryptageHelper.Base64StringToByteArray(id), configuration.GetSection("Divers:EncryptionKey").Value);
+
+                                //On trouve l'id
+                                id_user = int.Parse(id_decrypted);
+
+                                //On récupère l'objet de type Utilisateurs
+                                var _Utilisateur = await _ctx.Utilisateur
+                                                    .Where(x => x.id == id_user && x.date_deleted == null)
+                                                    .AsNoTracking()
+                                                    .Select(p => new
+                                                    {
+                                                        p.id,
+                                                        p.nom,
+                                                        p.prenom,
+                                                        p.mail,
+                                                        p.genre,
+                                                        p.id_profil,
+                                                    })
+                                                    .FirstOrDefaultAsync();
+
+                                if (_Utilisateur == null)
+                                {
+                                    //On définit le retour avec le détail de l'erreur
+                                    dataResult.codeReponse = CodeReponse.error;
+                                    dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                                }
+                                else
+                                {
+                                    //TBC
+                                    //On change le statut du user
+
+                                    //On enregistre dans la base de données
+                                    await _ctx.SaveChangesAsync();
+
+                                    //On définit le résultat à retourner
+                                    dataResult.TotalRows = (_Utilisateur != null ? 1 : 0);
+                                    dataResult.codeReponse = CodeReponse.ok;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour renvoyer un email de validation d'un Utilisateur
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/ResendEmailValidateUser
+        ///     {
+        ///         "id" : Id Utilisateur
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> ResendEmailValidateUser(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+            var dictionary = new Dictionary<string, string>();
+
+            long time;
+            int id = 0;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'objet de type Utilisateurs
+                            var _Utilisateur = await _ctx.Utilisateur
+                                                .Where(x => x.id == id && x.date_deleted == null)
+                                                .AsNoTracking()
+                                                .Select(p => new
+                                                {
+                                                    p.id,
+                                                    p.nom,
+                                                    p.prenom,
+                                                    p.genre,
+                                                    p.mail,
+                                                    p.id_profil,
+                                                })
+                                                .FirstOrDefaultAsync();
+
+                            if (_Utilisateur == null)
+                            {
+                                //On définit le retour avec le détail de l'erreur
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                            else
+                            {
+                                time = DateTime.Now.Ticks + 77;
+
+                                //TBC
+                                //On envoie le mail
+
+                                //On définit le résultat à retourner
+                                dataResult.TotalRows = (_Utilisateur != null ? 1 : 0);
+                                dataResult.codeReponse = CodeReponse.ok;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour renvoyer à l'Utilisateur un email de récupération du password
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/PasswordForgotten
+        ///     {
+        ///         "email" : Email Utilisateur
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> PasswordForgotten(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+            var dictionary = new Dictionary<string, string>();
+
+            string mail;
+            string password;
+
+            long time;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.mail == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        mail = (string)body.mail;
+
+                        //Si email non trouvé
+                        if (mail == "")
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'objet de type Utilisateurs
+                            var _Utilisateur = await _ctx.Utilisateur
+                                                .Where(x => x.mail == mail && x.date_deleted == null)
+                                                .AsNoTracking()
+                                                .Select(p => new
+                                                {
+                                                    p.id,
+                                                    p.nom,
+                                                    p.prenom,
+                                                    p.mail,
+                                                    p.id_profil,
+                                                    p.password,
+                                                    p.isupdatepassword
+                                                })
+                                                .FirstOrDefaultAsync();
+
+                            if (_Utilisateur == null)
+                            {
+                                //On définit le retour avec le détail de l'erreur
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                            else
+                            {
+                                //On récupère l'enregistrement à partir de l'id
+                                Utilisateur user = _ctx.Utilisateur.Where(p => p.date_deleted == null && p.id == _Utilisateur.id).FirstOrDefault();
+                                password = GeneratePassword(10);
+
+                                //Si enregistrement trouvé
+                                if (user != null)
+                                {
+                                    //On parse les données envoyées dans le body
+                                    user.password = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption((string)password, configuration.GetSection("Divers:EncryptionKey").Value));
+                                    user.isupdatepassword = false;
+
+                                    //On valide le format des différents champs
+                                    if (IsValid(user))
+                                    {
+                                        //On track l'historique de modification
+                                        user.date_updated = DateTime.Now;
+
+                                        //On enregistre en base de données
+                                        await _ctx.SaveChangesAsync();
+
+                                        //On définit le résultat à retourner
+                                        dataResult.codeReponse = CodeReponse.ok;
+                                        dataResult.msg = "Modifié";
+                                    }
+                                }
+
+
+                                //On définit le résultat à retourner
+                                dataResult.TotalRows = (_Utilisateur != null ? 1 : 0);
+                                dataResult.codeReponse = CodeReponse.ok;
+
+                                EnvoyerEmailNouvelUtilisateur(_Utilisateur.nom, _Utilisateur.prenom, mail, password);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Api pour modifier le mot de passe d'un Utilisateur
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/UpdatePassWord
+        ///     {
+        ///         "email" : Email Utilisateur
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> UpdatePassWord(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+            var dictionary = new Dictionary<string, string>();
+            JArray Attachements = new JArray();
+
+            int id;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.newPassword == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {  //les paramètres pour la pagiantion 
+                        body = JObject.Parse(record.ToString());
+                        id = int.Parse((string)body.id);
+
+                        var passwordHas = _ctx.Utilisateur
+                            .Where(u => u.date_deleted == null && u.id == id)
+                            .FirstOrDefault();
+
+                        if (id != 0 && passwordHas != null) //on  modifie
+                        {
+                            //var paramEmailStructure = CustomHelper.GetMailinfo(configuration.GetSection("EMAIL_MODELS:STRUCTURE").Value);
+                            //emailStructure = paramEmailStructure != null ? paramEmailStructure : "";
+
+                            //var paramEmailContenu = _contextG.Param_Emails
+                            //.Where(u => u.date_suppression == null && u.code == configuration.GetSection("EMAIL_MODELS:PASSWORD_MODIFIE").Value)
+                            //.Select(p => new
+                            //{
+                            //    p.objet,
+                            //    p.contenu
+                            //}).FirstOrDefault();
+
+                            //if (paramEmailContenu != null)
+                            //{
+                            //    emailContent = paramEmailContenu.contenu;
+                            //    emailObjet = paramEmailContenu.objet;
+                            //}
+
+                            //emailStructure = emailStructure.Replace(configuration.GetSection("EMAIL_MODELS:TAG_CONTENU").Value, emailContent);
+                            //string strEmailBody = emailStructure;
+
+                            passwordHas.password = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption((string)body.newPassword, configuration.GetSection("Divers:EncryptionKey").Value));
+                            passwordHas.isupdatepassword = true;
+                            passwordHas.date_updated = DateTime.Now;
+                            passwordHas.date_updatepassword = DateTime.Now;
+
+                            //if (strEmailBody != "")
+                            //{
+                            //    strEmailBody = strEmailBody.Replace("[%mot_de_passe%]", (string)body.newPassword);
+                            //    strEmailBody = strEmailBody.Replace("[%membre_prenom%]", passwordHas.prenom_user);
+                            //    strEmailBody = strEmailBody.Replace("[%membre_nom%]", passwordHas.nom_user);
+                            //}
+
+                            //strMessageBody = strEmailBody;
+                            //objHelper = new CustomHelper(_context);
+                            _ctx.Utilisateur.Attach(passwordHas);
+                            _ctx.Entry(passwordHas).State = EntityState.Modified;
+
+                            //emailTo = bool.Parse(configuration.GetSection("IS_MODE_TEST").Value) == true ? configuration.GetSection("EMAIL_TEST:TO").Value : passwordHas.mail_user;
+                            //string emailCc = bool.Parse(configuration.GetSection("IS_MODE_TEST").Value) ? configuration.GetSection("EMAIL_TEST:TOCOPY").Value : passwordHas.mail_user;
+
+                            ////On envoie le mail
+                            //response = await objHelper.sendEmailAsync(passwordHas.nom_user, emailTo, emailCc, objet, strMessageBody, Attachements, false, null, null, null, null, id_client);
+
+                            //if (response.IsSuccessStatusCode)
+                            //{
+                            //    dataResult.val = "send";
+                            //    dataResult.codeError = CodeError.ok;
+                            //}
+                            //else
+                            //{
+                            //    var msg = response.GetErrorMessage();
+                            //    var msg_ = response.GetErrorInfo();
+                            //    dataResult.val = response.StatusCode.ToString();
+                            //    dataResult.codeError = CodeError.error;
+                            //}
+
+                            _ctx.SaveChanges();
+
+                            //On définit le résultat à retourner
+                            dataResult.codeReponse = CodeReponse.ok;
+                            dataResult.msg = "Mot de passe modifie avec succes";
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+
+        /// <summary>
+        /// Service pour rechercher les enregistrements de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Search
+        ///     {
+        ///         "take" : 10, 
+        ///         "skip" : 0,
+        ///         "nom" : nom (varchar),
+        ///         "prenom" : prenom (varchar),
+        ///         "mail" : mail (varchar),
+        ///         "id_profil" : id_profil (int),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> Search(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+
+            int take;
+            int skip;
+            string field;
+            string order;
+
+            string nom;
+            string prenom;
+            string mail;
+            string telephone;
+            int? id_profil;
+            int? id_entity;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.error;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (!IsValidSearch(body))
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        //On récupère les paramètres de recherche envoyés dans le body
+                        nom = (body.nom != "" ? (string)body.nom : null);
+                        prenom = (body.prenom != "" ? (string)body.prenom : null);
+                        mail = (body.mail != "" ? (string)body.mail : null);
+                        telephone = (body.telephone != "" ? (string)body.telephone : null);
+                        id_profil = (body.id_profil != null && (string)body.id_profil != "" ? (int)body.id_profil : new int?());
+                        id_entity = (body.id_entity != null && (string)body.id_entity != "" ? (int)body.id_entity : new int?());
+
+                        //On récupère les paramètres de pagination
+                        take = int.Parse((String)body.take);
+                        skip = int.Parse((String)body.skip);
+
+                        //On récupère les paramètres de tri
+                        field = (body.field != null ? body.field : "id");
+                        order = (body.order != null ? body.order : "DESC");
+
+                        //On exécute la requête
+                        var Utilisateurs = _ctx.Utilisateur
+                            .Where(p => p.date_deleted == null
+                                 && (nom == null || (nom != null && p.nom.ToLower().Contains(nom.ToLower())))
+                                 && (prenom == null || (prenom != null && p.prenom.ToLower().Contains(prenom.ToLower())))
+                                 && (mail == null || (mail != null && p.mail.ToLower().Contains(mail.ToLower())))
+                                 && (telephone == null || (telephone != null && p.telephone.ToLower().Contains(telephone.ToLower())))
+                                 && (id_profil == null || (id_profil != null && p.id_profil == id_profil))
+                                 && (id_entity == null || (id_entity != null && p.id == id_entity)))
+                            .AsNoTracking()
+                            .Select(p => new
+                            {
+                                p.id,
+                                p.nom,
+                                p.prenom,
+                                p.mail,
+                                genre = p.genre == true ? 1 : 0,
+                                p.telephone,
+                                p.isactive,
+                                profil = p.id_profilNavigation.label,
+                                entity = p.id_entityNavigation.label,
+                            })
+                            .OrderByDynamic(field, order == "desc" ? QueryableExtensions.Order.Desc : QueryableExtensions.Order.Asc);
+
+                        var resultTake = await Utilisateurs.Skip(skip).Take(take).ToListAsync();
+
+                        //On définit le résultat à retourner
+                        dataResult.TotalRows = Utilisateurs.Count();
+                        dataResult.NbRows = resultTake.Count();
+                        dataResult.codeReponse = CodeReponse.ok;
+                        dataResult.data = resultTake;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour récupérer le détail d'un objet de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Load
+        ///     {
+        ///         "id" : Id de l'enregistrement de type Utilisateurs
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> Load(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body = "";
+            int id = 0;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'objet de type Utilisateurs
+                            var _Utilisateur = await _ctx.Utilisateur
+                                                .Where(x => x.id == id && x.date_deleted == null)
+                                                .AsNoTracking()
+                                                .Select(p => new
+                                                {
+                                                    p.id,
+                                                    p.nom,
+                                                    p.prenom,
+                                                    genre = p.genre == true ? 1 : 0,
+                                                    p.mail,
+                                                    p.telephone,
+                                                    p.id_profil,
+                                                    p.id_entity,
+                                                    p.id_decoupagecommercial,
+                                                    p.id_user_pere,
+                                                    p.isactive,
+                                                    imageUrl = (p.image != null && p.image != "") ? configuration.GetSection("applicationUrl").Value + "/images/" + p.image : configuration.GetSection("applicationUrl").Value + "/images/" + "default-image-user.png",
+                                                    p.image,
+                                                })
+                                                .FirstOrDefaultAsync();
+
+                            if (_Utilisateur == null)
+                            {
+                                //On définit le retour avec le détail de l'erreur
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                            else
+                            {
+                                //On définit le résultat à retourner
+                                dataResult.TotalRows = (_Utilisateur != null ? 1 : 0);
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.data = JsonConvert.SerializeObject(_Utilisateur);
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour ajouter un objet de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Insert
+        ///     {
+        ///         "nom" : nom (varchar),
+        ///         "prenom" : prenom (varchar),
+        ///         "mail" : mail (varchar),
+        ///         "id_profil" : id_profil (int),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'Utilisateur</param>
+        public async Task<DataSourceResult> Insert(string image,
+                                                   string nom,
+                                                   string prenom,
+                                                   string mail,
+                                                   string telephone,
+                                                   string password,
+                                                   int id_profil,
+                                                   int id_entity,
+                                                   int id_decoupagecommercial,
+                                                   int user_id,
+                                                   bool genre,
+                                                   int? id_user_pere
+                                                   )
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+
+            try
+            {
+
+                if (nom == null || prenom == null || mail == null || password == null)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    string mdpEnClair = password;
+                    var pwd = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption(mdpEnClair, configuration.GetSection("Divers:EncryptionKey").Value));
+
+                    //On parse les informations envoyées dans le body
+                    var data = new Utilisateur
+                    {
+                        nom = nom,
+                        prenom = prenom,
+                        mail = mail,
+                        telephone = telephone,
+                        id_profil = id_profil,
+                        id_entity = id_entity,
+                        id_decoupagecommercial = id_decoupagecommercial,
+                        genre = genre,
+                        password = pwd,
+                        image = image,
+                        id_user_pere = id_user_pere,
+                    };
+
+                    //On track l'historique de modification
+                    data.date_created = DateTime.Now;
+                    data.user_created = user_id;
+
+                    if (IsValid(data))
+                    {
+                        //On ajoute l'objet dans le contexte de la base de données
+                        await _ctx.Utilisateur.AddAsync((Utilisateur)data);
+
+                        //On enregistre dans la base de données
+                        await _ctx.SaveChangesAsync();
+
+                        //On définit le résultat à retourner
+                        dataResult.codeReponse = CodeReponse.ok;
+                        dataResult.msg = "Ajouté";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+
+        public string GeneratePassword(int length)
+        {
+            const string charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+            var password = new StringBuilder();
+            var random = new Random();
+
+            for (int i = 0; i < length; i++)
+            {
+                password.Append(charset[random.Next(charset.Length)]);
+            }
+
+            return password.ToString();
+        }
+
+
+        public async Task<DataSourceResult> InsertUser(Object record)
+        {
+            // Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            dynamic body;
+            try
+            {
+
+                string generatedPassword = GeneratePassword(10);
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+                if (record == null || record.ToString().Length == 0)
+                {
+
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    body = JObject.Parse(record.ToString());
+                    bool emailExists = await VerifierEmailExiste(body.mail.ToString());
+                    bool telephoneExists = await VerifierTelephoneExiste(body.telephone.ToString());
+                    if (emailExists)
+                    {
+                        dataResult.codeReponse = CodeReponse.error;
+                        dataResult.msg = "L'e-mail existe déjà dans la base de données.";
+                    }
+                    else if (telephoneExists)
+                    {
+                        dataResult.codeReponse = CodeReponse.error;
+                        dataResult.msg = "Le numéro de téléphone existe déjà dans la base de données.";
+                    }
+                    else
+                    {
+                        if (!IsValidInsert(body))
+                        {
+                            // Définissez un message d'erreur si l'un des paramètres requis est manquant
+                            dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                        }
+                        else
+                        {
+                            string mdpEnClair = generatedPassword;
+                            var pwd = CryptageHelper.ByteArrayToBase64Hex(CryptageHelper.Encryption(mdpEnClair, configuration.GetSection("Divers:EncryptionKey").Value));
+
+                            // Création de l'objet Utilisateur
+                            var utilisateur = new Utilisateur
+                            {
+                                nom = body.nom,
+                                prenom = body.prenom,
+                                adress = body.adress,
+                                mail = body.mail,
+                                telephone = body.telephone,
+                                password = pwd,
+                                id_profil = body.id_profil,
+                                genre = body.genre,
+                                isupdatepassword = false,
+                                date_created = DateTime.Now,
+                                date_updatepassword = null
+                            };
+                            if (IsValid(utilisateur))
+                            {
+                                //On ajoute l'objet dans le contexte de la base de données
+                                await _ctx.Utilisateur.AddAsync(utilisateur);
+                                await _ctx.SaveChangesAsync();
+
+                                var Partenaire = new Partenaire
+                                {
+                                    nom = body.nom,
+                                    prenom = body.prenom,
+                                    mail = body.mail,
+                                    id_ville = body.id_ville,
+                                    telephone = body.telephone,
+                                    genre = body.genre,
+                                    user_created = utilisateur.id,
+                                    date_created = DateTime.Now,
+                                };
+                                await _ctx.Partenaire.AddAsync(Partenaire);
+                                await _ctx.SaveChangesAsync();
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.msg = "Utilisateur ajouté avec succès.";
+                                EnvoyerEmailNouvelUtilisateur(body.nom.ToString(), body.prenom.ToString(), body.mail.ToString(), mdpEnClair);
+                            }
+                        }
+
+                    }
+
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        private async Task EnvoyerEmailNouvelUtilisateur(string nom, string prenom, string mail, string password)
+        {
+            try
+            {
+                // Configuration de l'e-mail
+                string smtpServer = configuration.GetSection("SmtpSettings:SmtpServer").Value;
+                int smtpPort = int.Parse(configuration.GetSection("SmtpSettings:SmtpPort").Value);
+                string smtpUsername = configuration.GetSection("SmtpSettings:SmtpUsername").Value;
+                string smtpPassword = configuration.GetSection("SmtpSettings:SmtpPassword").Value;
+                bool enableSsl = bool.Parse(configuration.GetSection("SmtpSettings:EnableSsl").Value);
+                string sender = configuration.GetSection("SmtpSettings:Sender").Value;
+                string recipient = mail; // Utilisez l'e-mail de l'utilisateur
+
+                using (SmtpClient smtpClient = new SmtpClient(smtpServer, smtpPort))
+                {
+                    smtpClient.EnableSsl = enableSsl;
+                    smtpClient.Credentials = new NetworkCredential(smtpUsername, smtpPassword);
+
+                    MailMessage message = new MailMessage();
+                    message.From = new MailAddress(sender);
+                    message.To.Add(new MailAddress(recipient));
+                    message.Subject = "Confirmation D'inscription À La Plateforme Devenir Partenaire Wafacash";
+
+                    string htmlBody = @"
+
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <meta charset='UTF-8'>
+                                    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                                    <title>Devenir Partenaire</title>
+                                </head>
+                                <body style='margin: 0; padding: 0; font-family: Arial, sans-serif; background-color: white;'>
+                                  <div style='line-height: 25px;margin: 20px; background-color: white;'>
+                                    Bonjour <b>M./Mme " + nom + " " + prenom + @"</b>,<br>
+                                Nous sommes ravis de vous accueillir parmi nous !<br>
+                                Nous vous informons que votre inscription à la plateforme<b> Devenir Partenaire Wafacash</b> a été validée avec succès.<br>
+                                Pour faciliter votre première connexion, veuillez trouver ci-dessous vos informations de connexion :<br>
+                                <ul>
+                                    <li>
+                                       <b style='color: #999999;'> Adresse e-mail :</b> " + mail + @"<br>
+                                    </li>
+                                    <li>
+                                        <b style='color: #999999;'>Mot de passe temporaire </b>: " + password + @"<br>
+                                    </li>
+                                </ul>
+                                Nous vous rappelons qu'il est impératif de <b>modifier votre mot de passe dès votre première connexion</b> pour des raisons de sécurité.<br>
+                                Si vous avez des questions ou besoin d'assistance, n'hésitez pas à nous contacter. Notre équipe est à votre disposition pour vous aider.<br>
+                                Au plaisir de collaborer ensemble,<br><br>
+                                
+                                <b>L’équipe Wafacash</b>
+                                
+                                </div>
+                                </body>
+                                </html>
+                        ";
+
+
+                    // Plain text version of the email body
+
+                    // Set both HTML and plain text versions of the body
+                    message.Body = htmlBody;
+                    message.IsBodyHtml = true;
+                    message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(htmlBody, null, "text/html"));
+
+                    // Envoi de l'e-mail
+                    await smtpClient.SendMailAsync(message);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Gérez l'exception liée à l'envoi de l'e-mail
+            }
+        }
+
+
+        public async Task<bool> VerifierEmailExiste(string email)
+        {
+            var existingUser = await _ctx.Utilisateur.FirstOrDefaultAsync(u => u.mail == email);
+            return existingUser != null;
+        }
+
+        public async Task<bool> VerifierTelephoneExiste(string telephone)
+        {
+            var existingUser = await _ctx.Utilisateur.FirstOrDefaultAsync(u => u.telephone == telephone);
+            return existingUser != null;
+        }
+        /// <summary>
+        /// Service pour modifier un objet de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Update
+        ///     {
+        ///         "id" : Id de l'enregistrement de type Utilisateurs,
+        ///         "nom" : nom (varchar),
+        ///         "prenom" : prenom (varchar),
+        ///         "mail" : mail (varchar),
+        ///         "id_profil" : id_profil (int),
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'Utilisateur</param>
+        public async Task<DataSourceResult> Update(string image,
+                                                   string nom,
+                                                   string prenom,
+                                                   string mail,
+                                                   string telephone,
+                                                   int id_profil,
+                                                   int? id_decoupagecommercial,
+                                                   int id_entity,
+                                                   int genre,
+                                                   int id,
+                                                   int? id_user_pere)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+
+            try
+            {
+                if (nom == null || prenom == null || mail == null)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //Si id non trouvé
+                    if (id == 0)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.error;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                    }
+                    else
+                    {
+                        //On récupère l'enregistrement à partir de l'id
+                        Utilisateur Utilisateur = _ctx.Utilisateur.Where(p => p.date_deleted == null && p.id == id).FirstOrDefault();
+
+                        //Si enregistrement trouvé
+                        if (Utilisateur != null)
+                        {
+                            //On parse les données envoyées dans le body
+                            Utilisateur.nom = nom;
+                            Utilisateur.prenom = prenom;
+                            Utilisateur.mail = mail;
+                            Utilisateur.telephone = telephone;
+                            Utilisateur.id_entity = id_entity;
+                            Utilisateur.genre = genre == 1 ? true : false;
+                            Utilisateur.id_profil = id_profil;
+                            Utilisateur.id_decoupagecommercial = id_decoupagecommercial;
+                            Utilisateur.image = image;
+                            Utilisateur.id_user_pere = id_user_pere;
+
+                            //On valide le format des différents champs
+                            if (IsValid(Utilisateur))
+                            {
+                                //On track l'historique de modification
+                                Utilisateur.date_updated = DateTime.Now;
+                                Utilisateur.user_updated = id;
+
+                                //On enregistre en base de données
+                                await _ctx.SaveChangesAsync();
+
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.msg = "Modifié";
+                            }
+                        }
+                        else
+                        {
+                            //On définit le résultat à retourner
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value; ;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+        /// <summary>
+        /// Service pour supprimer un objet de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Delete
+        ///     {
+        ///         "id" : id de l'enregistrement de type Utilisateurs
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'Utilisateur</param>
+        public async Task<DataSourceResult> Delete(Object record)
+        {
+            //Déclaration des variables
+            dynamic body;
+            DataSourceResult dataResult = new DataSourceResult();
+            int id;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'enregistrement à partir de l'id
+                            Utilisateur Utilisateur = _ctx.Utilisateur.Where(p => p.date_deleted == null && p.id == id).FirstOrDefault();
+
+                            if (Utilisateur != null)
+                            {
+                                //On track l'historique de modification
+                                Utilisateur.date_deleted = DateTime.Now;
+                                Utilisateur.user_deleted = body.user_id;
+
+                                //On enregistre en base de données
+                                await _ctx.SaveChangesAsync();
+
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.msg = "Supprimé";
+                            }
+                            else
+                            {
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+
+
+        /// <summary>
+        /// Service pour supprimer un objet de type Utilisateurs
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Utilisateur/Logout
+        ///     {
+        ///         "id" : id de l'enregistrement de type Utilisateurs
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'Utilisateur</param>
+        public async Task<DataSourceResult> Logout(Object record)
+        {
+            //Déclaration des variables
+            dynamic body;
+            DataSourceResult dataResult = new DataSourceResult();
+            int id;
+
+            try
+            {
+                //On enlève les caractères superflux
+                record = record.ToString().Replace("ValueKind = Object : ", "");
+
+                if (record == null || record.ToString().Length == 0)
+                {
+                    //On définit le retour avec le détail de l'erreur
+                    dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                    dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                }
+                else
+                {
+                    //On récupère les données envoyées dans le body
+                    body = JObject.Parse(record.ToString());
+
+                    //On valide l'existence de l'ensemble des champs attendus dans le body
+                    if (body.id == null)
+                    {
+                        //On définit le retour avec le détail de l'erreur
+                        dataResult.codeReponse = CodeReponse.errorInvalidMissingParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value;
+                    }
+                    else
+                    {
+                        int.TryParse((string)body.id, out id);
+
+                        //Si id non trouvé
+                        if (id == 0)
+                        {
+                            //On définit le retour avec le détail de l'erreur
+                            dataResult.codeReponse = CodeReponse.error;
+                            dataResult.msg = configuration.GetSection("MessagesAPI:ParamsInvalid").Value + " id doit être un entier.";
+                        }
+                        else
+                        {
+                            //On récupère l'enregistrement à partir de l'id
+                            Utilisateur Utilisateur = _ctx.Utilisateur.Where(p => p.date_deleted == null && p.id == id).FirstOrDefault();
+
+                            if (Utilisateur != null)
+                            {
+                                //On track l'historique de modification
+                                Utilisateur.isactive = false;
+
+                                //On enregistre en base de données
+                                await _ctx.SaveChangesAsync();
+
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.ok;
+                                dataResult.msg = "déconnecter";
+                            }
+                            else
+                            {
+                                //On définit le résultat à retourner
+                                dataResult.codeReponse = CodeReponse.error;
+                                dataResult.msg = configuration.GetSection("MessagesAPI:UnknownRecord").Value;
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_ctx).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+            }
+
+            //On retourne le résultat
+            return dataResult;
+        }
+
+
+        /// <summary>
+        /// Méthode de validation des paramètres de recherche de l'entité de type Utilisateurs
+        /// </summary>
+        /// <param name="body">Paramètre d'aappel de l'api</param>
+        /// <returns></returns>
+        private bool IsValidSearch(dynamic body)
+        {
+            bool result = true;
+
+            //-----------------------------------------------
+            //On valide l'existence de l'ensemble des paramètres passés en paramètres
+            //-----------------------------------------------
+
+            //On vérifie l'existence du paramètre nom (nom (Utilisateur))
+            if (body.nom == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre prenom (prenom (Utilisateur))
+            if (body.prenom == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre mail (mail (Utilisateur))
+            if (body.mail == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre id_profil (id_profil (Utilisateur))
+            if (body.id_profil == null)
+            {
+                result = false;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Méthode de validation de l'entité de type Utilisateurs
+        /// </summary>
+        /// <param name="objEntity">Entité de type Utilisateurs</param>
+        /// <returns></returns>
+        private bool IsValid(Utilisateur objEntity)
+        {
+            //Déclaration des variables
+            bool result = true;
+
+            //On valide le format de l'ensemble des paramètres passés en paramètres
+            new UtilisateurValidator().Validate(objEntity, options => options.ThrowOnFailures());
+
+            //On retourne le résultat
+            return result;
+        }
+
+        /// <summary>
+        /// Méthode de validation de de l'existence des paramètres d'insertion de l'entité de type Utilisateurs
+        /// </summary>
+        /// <param name="body">Paramètre d'aappel de l'api</param>
+        /// <returns></returns>
+        private bool IsValidInsert(dynamic body)
+        {
+            //Déclaration des variables
+            bool result = true;
+
+            //-----------------------------------------------
+            //On valide l'existence de l'ensemble des paramètres passés en paramètres
+            //-----------------------------------------------
+
+            //On vérifie l'existence du paramètre nom (nom (Utilisateur))
+            if (body.nom == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre prenom (prenom (Utilisateur))
+            if (body.prenom == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre mail (mail (Utilisateur))
+            if (body.mail == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre id_profil (id_profil (Utilisateur))
+            if (body.id_profil == null)
+            {
+                result = false;
+            }
+
+            //On retourne le résultat
+            return result;
+        }
+
+        /// <summary>
+        /// Méthode de validation de l'existence des paramètres d'update de l'entité de type Utilisateurs
+        /// </summary>
+        /// <param name="body">Paramètre d'aappel de l'api</param>
+        /// <returns></returns>
+        private bool IsValidUpdate(dynamic body)
+        {
+            //Déclaration des variables
+            bool result = true;
+
+            //-----------------------------------------------
+            //On valide l'existence de l'ensemble des paramètres passés en paramètres
+            //-----------------------------------------------
+
+            //On vérifie l'existence du paramètre nom (nom (Utilisateur))
+            if (body.nom == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre prenom (prenom (Utilisateur))
+            if (body.prenom == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre mail (mail (Utilisateur))
+            if (body.mail == null)
+            {
+                result = false;
+            }
+
+            //On vérifie l'existence du paramètre id_profil (id_profil (Utilisateur))
+            if (body.id_profil == null)
+            {
+                result = false;
+            }
+
+            //On retourne le résultat
+            return result;
+        }
+    }
+}

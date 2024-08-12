@@ -1,0 +1,431 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using monopp.Library.DAL;
+using monopp.Library.Services;
+using monopp.Library.Utility;
+using Newtonsoft.Json;
+using System;
+using System.Reflection;
+using System.Text.Json;
+using System.Threading.Tasks;
+
+namespace monopp.API.Controllers
+{
+    /// <summary>
+    /// Controlleur permettant de gérer les objets de type Entitys
+    /// </summary>
+	[ApiVersion("1.0")]
+    public class EntityController : BaseApiController
+    {
+        //Gestionnaire de paramètre
+        private IConfiguration configuration;
+
+        //Contexte de la base de données
+        private dbContext _context;
+
+        /// <summary>
+        /// Constructeur par défaut
+        /// </summary>
+        public EntityController(dbContext context)
+        {
+            configuration = Startup.StaticConfiguration;
+            _context = context;
+        }
+
+        /// <summary>
+        /// Api pour afficher tous les enregistrements de type Entitys
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Entity/GetAll
+        ///     {
+        ///     }
+        /// </remarks>
+        /// <response code="200">Si la fonction s'est exécutée avec succès, l'api renvoie les informations</response>
+        /// <response code="401">Si l'utilisateur n'a pas le droit d'utiliser l'api, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="500">En cas d'une erreur technique, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="501">En cas d'une erreur due au manque d'un paramètre ou un mauvais format, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="502">En cas d'une erreur dans le format d'un champ ou qu'il soit manquant, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="503">En cas d'une erreur lors de la validation de l'entité, l'api renvoie cette erreur à l'utilisateur</response>
+        [HttpPost, Route("GetAll"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> GetAll()
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            EntityService _EntityService = new EntityService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+
+            try
+            {
+                //On vérifie l'existence de la clé api
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    //On appelle le service pour récupérer les données
+                    dataResult = await _EntityService.GetAll();
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                //On libère les ressources
+                _EntityService = null;
+                customHelper = null;
+            }
+
+            //On retourne le résultat
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        /// <summary>
+        /// Api pour rechercher les enregistrements de type Entitys
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Entity/Search
+        ///     {
+        ///         "take" : 10, 
+        ///         "skip" : 0,      
+        ///          "id" : id (int),
+        ///          "nom" : nom (string),
+        ///          "tel" : tel (string),
+        ///          "adresse" : adresse (string),
+        ///          "if_Entity" : if_Entity (string),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'utilisateur</param>
+        /// <response code="200">Si la fonction s'est exécutée avec succès, l'api renvoie les informations</response>
+        /// <response code="401">Si l'utilisateur n'a pas le droit d'utiliser l'api, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="500">En cas d'une erreur technique, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="501">En cas d'une erreur due au manque d'un paramètre ou un mauvais format, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="502">En cas d'une erreur dans le format d'un champ ou qu'il soit manquant, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="503">En cas d'une erreur lors de la validation de l'entité, l'api renvoie cette erreur à l'utilisateur</response>
+        [HttpPost, Route("Search"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Search(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            EntityService _EntityService = new EntityService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+
+            try
+            {
+                //On vérifie l'existence de la clé api
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    //On appelle le service pour récupérer les données
+                    dataResult = await _EntityService.Search(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                //On libère les ressources
+                _EntityService = null;
+                customHelper = null;
+            }
+
+            //On retourne le résultat
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        /// <summary>
+        /// Api pour récupérer le détail d'un objet de type Entitys
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Entity/Load
+        ///     {
+        ///         "id" : Id de l'enregistrement de type Entitys
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'utilisateur</param>
+        /// <response code="200">Si la fonction s'est exécutée avec succès, l'api renvoie les informations</response>
+        /// <response code="401">Si l'utilisateur n'a pas le droit d'utiliser l'api, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="500">En cas d'une erreur technique, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="501">En cas d'une erreur due au manque d'un paramètre ou un mauvais format, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="502">En cas d'une erreur dans le format d'un champ ou qu'il soit manquant, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="503">En cas d'une erreur lors de la validation de l'entité, l'api renvoie cette erreur à l'utilisateur</response>
+        [HttpPost, Route("Load"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Load(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            EntityService _EntityService = new EntityService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+
+            try
+            {
+                //On vérifie l'existence de la clé api
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    //On appelle le service pour récupérer les données
+                    dataResult = await _EntityService.Load(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                //On libère les ressources
+                _EntityService = null;
+                customHelper = null;
+            }
+
+            //On retourne le résultat
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        /// <summary>
+        /// Api pour ajouter un objet de type Entitys
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Entity/Insert
+        ///     {   
+        ///       "nom" : nom (string),
+        ///       "adresse" : adresse (string),
+        ///       "tel" : tel (string),
+        ///       "pays" :pays (string),
+        ///       "ville" = ville (string),
+        ///       "codepostal" : codepostal (string),
+        ///       "commentaire" : commentaire (string),
+        ///       "if_Entity" : if_Entity (string),
+        ///       "email" : email(string),
+        ///     }
+        /// </remarks>
+        /// <param name="record">Body du post qui contient les données envoyées par l'utilisateur</param>
+        /// <response code="200">Si la fonction s'est exécutée avec succès, l'api renvoie les informations</response>
+        /// <response code="401">Si l'utilisateur n'a pas le droit d'utiliser l'api, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="500">En cas d'une erreur technique, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="501">En cas d'une erreur due au manque d'un paramètre ou un mauvais format, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="502">En cas d'une erreur dans le format d'un champ ou qu'il soit manquant, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="503">En cas d'une erreur lors de la validation de l'entité, l'api renvoie cette erreur à l'utilisateur</response>
+        [HttpPost, Route("Insert"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Insert(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            EntityService _EntityService = new EntityService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+
+            try
+            {
+                //On vérifie l'existence de la clé api
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    //On appelle le service pour insérer les données
+                    dataResult = await _EntityService.Insert(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                //On libère les ressources
+                _EntityService = null;
+                customHelper = null;
+            }
+
+            //On retourne le résultat
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        /// <summary>
+        /// Api pour modifier un objet de type Entitys
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Entity/Update
+        ///     {
+        ///          "id" : Id de l'enregistrement de type Entitys,
+        ///          "nom" : nom (string),
+        ///          "adresse" : adresse (string),
+        ///          "tel" : tel (string),
+        ///          "pays" :pays (string),
+        ///          "ville" = ville (string),
+        ///          "codepostal" : codepostal (string),
+        ///          "commentaire" : commentaire (string),
+        ///          "if_Entity" : if_Entity (string),
+        ///          "email" : email(string),
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'utilisateur</param>
+        /// <response code="200">Si la fonction s'est exécutée avec succès, l'api renvoie les informations</response>
+        /// <response code="401">Si l'utilisateur n'a pas le droit d'utiliser l'api, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="500">En cas d'une erreur technique, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="501">En cas d'une erreur due au manque d'un paramètre ou un mauvais format, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="502">En cas d'une erreur dans le format d'un champ ou qu'il soit manquant, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="503">En cas d'une erreur lors de la validation de l'entité, l'api renvoie cette erreur à l'utilisateur</response>
+        [HttpPost, Route("Update"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Update(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            EntityService _EntityService = new EntityService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+
+            try
+            {
+                //On vérifie l'existence de la clé api
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    //On appelle le service pour updater les données
+                    dataResult = await _EntityService.Update(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                //On libère les ressources
+                _EntityService = null;
+                customHelper = null;
+            }
+
+            //On retourne le résultat
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        /// <summary>
+        /// Api pour supprimer un objet de type Entitys
+        /// </summary>
+        /// <remarks>
+        ///     Requête :
+        ///     POST Entity/Delete
+        ///     {
+        ///         "id" : id de l'enregistrement de type Entitys
+        ///     }
+        /// </remarks>
+        /// <param name="record">L'objet qui contient les données reçue par l'utilisateur</param>
+        /// <response code="200">Si la fonction s'est exécutée avec succès, l'api renvoie les informations</response>
+        /// <response code="401">Si l'utilisateur n'a pas le droit d'utiliser l'api, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="500">En cas d'une erreur technique, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="501">En cas d'une erreur due au manque d'un paramètre ou un mauvais format, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="502">En cas d'une erreur dans le format d'un champ ou qu'il soit manquant, l'api renvoie cette erreur à l'utilisateur</response>
+        /// <response code="503">En cas d'une erreur lors de la validation de l'entité, l'api renvoie cette erreur à l'utilisateur</response>
+        [HttpPost, Route("Delete"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Delete(Object record)
+        {
+            //Déclaration des variables
+            DataSourceResult dataResult = new DataSourceResult();
+            EntityService _EntityService = new EntityService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+
+            try
+            {
+                //On vérifie l'existence de la clé api
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    //On appelle le service pour supprimer l'enregistrement
+                    dataResult = await _EntityService.Delete(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                //On définit le retour avec le détail de l'erreur
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+
+                //On log l'erreur
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                //On libère les ressources
+                _EntityService = null;
+                customHelper = null;
+            }
+
+            //On retourne le résultat
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+
+    }
+}

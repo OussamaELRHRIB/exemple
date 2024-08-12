@@ -1,0 +1,708 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using monopp.Library.DAL;
+using monopp.Library.Services;
+using monopp.Library.Utility;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using System;
+using System.IO;
+using System.Net.Http.Headers;
+using System.Reflection;
+using System.Threading.Tasks;
+using log4net;
+using System.Linq;
+using System.Collections.Generic;
+using System.Text.Json;
+
+namespace monopp.API.Controllers
+{
+    /// <summary>
+    /// Controlleur permettant de gérer les objets de type Utilisateurs
+    /// </summary>
+    [ApiVersion("1.0")]
+    public class UtilisateurController : BaseApiController
+    {
+        private static readonly ILog log = LogManager.GetLogger(typeof(UtilisateurController));
+        private IConfiguration configuration;
+        private dbContext _context;
+
+        public UtilisateurController(dbContext context)
+        {
+            configuration = Startup.StaticConfiguration;
+            _context = context;
+        }
+
+        [HttpPost, Route("GetAll"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> GetAll(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.GetAll(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "GetAll", "Retrieve all users", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+        [HttpPost, Route("Login"), Produces("application/json")]
+        public async Task<object> Login(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            dynamic body = "";
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.Login(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+                log.Error(ex);
+                log.Info(this.GetType().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Login", "User login attempt", record,HttpContext);
+
+
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("Cantrylogin"), Produces("application/json")]
+        public async Task<object> Cantrylogin(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            dynamic body = "";
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.Cantrylogin(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+                log.Error(ex);
+                log.Info(this.GetType().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Cantrylogin", "User Cantrylogin attempt", record,HttpContext);
+
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("ValidateUser"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> ValidateUser(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.ValidateUser(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "ValidateUser", "Validate user", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("ResendEmailValidateUser"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> ResendEmailValidateUser(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.ResendEmailValidateUser(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "ResendEmailValidateUser", "Resend email validation", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("PasswordForgotten"), Produces("application/json")]
+        //[Authorize]
+        public async Task<object> PasswordForgotten(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.PasswordForgotten(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "PasswordForgotten", "Password forgotten request", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("Search"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Search(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.Search(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Search", "Search users", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("Load"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Load(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.Load(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Load", "Load user details", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("Insert")]
+        [Authorize]
+        public async Task<object> Insert()
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            string nom, prenom, mail, password, imageName, telephone;
+            int id_profil;
+            int id_entity;
+            int id_decoupagecommercial;
+            int user_id;
+            int? id_user_pere;
+            int valgenre;
+            bool genre;
+
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                   && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                   && dataResult.codeReponse != CodeReponse.error
+                   && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                   && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                   && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    var image = Request.Form.Files.Count > 0 ? Request.Form.Files[0] : null;
+                    var base64Image = Request.Form["base64Image"];
+                    imageName = image == null ? (string)Request.Form["imageName"] : "";
+
+                    nom = (string)Request.Form["nom"];
+                    prenom = (string)Request.Form["prenom"];
+                    mail = Request.Form["mail"];
+                    telephone = Request.Form["telephone"];
+                    password = Request.Form["password"];
+                    id_profil = int.Parse((string)Request.Form["id_profil"]);
+                    id_entity = int.Parse((string)Request.Form["id_entity"]);
+                    id_decoupagecommercial = int.Parse((string)Request.Form["id_decoupagecommercial"]);
+                    user_id = int.Parse((string)Request.Form["user_id"]);
+                    id_user_pere = int.Parse((string)Request.Form["id_user_pere"]);
+                    genre = int.TryParse((string)Request.Form["genre"], out valgenre);
+
+                    if (nom == null || prenom == null || mail == null || password == null || id_profil == 0)
+                    {
+                        dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                    }
+                    else
+                    {
+                        string newFileName = null;
+
+                        if (!string.IsNullOrEmpty(base64Image))
+                        {
+                            var folderName = Path.Combine("wwwroot", "images");
+                            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+                            if (!Directory.Exists(pathToSave))
+                            {
+                                Directory.CreateDirectory(pathToSave);
+                            }
+
+                            newFileName = $"{Guid.NewGuid()}.jpg";
+                            var fullPath = Path.Combine(pathToSave, newFileName);
+                            byte[] imageBytes = Convert.FromBase64String(base64Image);
+
+                            await System.IO.File.WriteAllBytesAsync(fullPath, imageBytes);
+                        }
+                        else if (image != null)
+                        {
+                            var folderName = Path.Combine("wwwroot", "images");
+                            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+                            if (!Directory.Exists(pathToSave))
+                            {
+                                Directory.CreateDirectory(pathToSave);
+                            }
+
+                            newFileName = ContentDispositionHeaderValue.Parse(image.ContentDisposition).FileName.Trim('"');
+                            var fullPath = Path.Combine(pathToSave, newFileName);
+
+                            using (var stream = new FileStream(fullPath, FileMode.Create))
+                            {
+                                image.CopyTo(stream);
+                            }
+                        }
+
+                        dataResult = await _UtilisateurService.Insert(newFileName ?? imageName,
+                                                                      nom,
+                                                                      prenom,
+                                                                      mail,
+                                                                      telephone,
+                                                                      password,
+                                                                      id_profil,
+                                                                      id_entity,
+                                                                      id_decoupagecommercial,
+                                                                      user_id,
+                                                                      genre,
+                                                                      id_user_pere);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Insert", "Insert user", dataResult, HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("InsertUser"), Produces("application/json")]
+        public async Task<object> InsertUser(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            try
+            {
+                dataResult = await _UtilisateurService.InsertUser(record);
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "InsertUser", "Insert user record", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("Update"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Update()
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            string nom, prenom, mail, imageName, telephone;
+            int id, id_profil, id_entity;
+            int genre;
+            int? id_user_pere;
+            int? id_decoupagecommercial;
+
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                   && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                   && dataResult.codeReponse != CodeReponse.error
+                   && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                   && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                   && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    var image = Request.Form.Files.Count > 0 ? Request.Form.Files[0] : null;
+                    var base64Image = Request.Form["base64Image"];
+                    imageName = image == null ? (string)Request.Form["imageName"] : "";
+                    nom = (string)Request.Form["nom"];
+                    prenom = (string)Request.Form["prenom"];
+                    mail = Request.Form["mail"];
+                    telephone = Request.Form["telephone"];
+                    id_profil = int.Parse((string)Request.Form["id_profil"]);
+                    id_decoupagecommercial = int.Parse((string)Request.Form["id_decoupagecommercial"]);
+                    id_entity = int.Parse((string)Request.Form["id_entity"]);
+                    genre = int.Parse((string)Request.Form["genre"]);
+                    id = int.Parse((string)Request.Form["id"]);
+                    if (!int.TryParse(Request.Form["id_user_pere"], out int parsedIdUserPere))
+                    {
+                        id_user_pere = id; // fallback to the default id if parsing fails
+                    }
+                    else
+                    {
+                        id_user_pere = parsedIdUserPere; // use the parsed value if parsing succeeds
+                    }
+
+                    if (nom == null || prenom == null || mail == null
+                        || id_profil == 0 || id == 0)
+                    {
+                        dataResult.codeReponse = CodeReponse.errorMissingAllParams;
+                        dataResult.msg = configuration.GetSection("MessagesAPI:ParamsEmpty").Value;
+                    }
+                    else
+                    {
+                        string newFileName = null;
+
+                        if (!string.IsNullOrEmpty(base64Image))
+                        {
+                            var folderName = Path.Combine("wwwroot", "images");
+                            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+                            if (!Directory.Exists(pathToSave))
+                            {
+                                Directory.CreateDirectory(pathToSave);
+                            }
+
+                            newFileName = $"{Guid.NewGuid()}.jpg";
+                            var fullPath = Path.Combine(pathToSave, newFileName);
+                            byte[] imageBytes = Convert.FromBase64String(base64Image);
+
+                            await System.IO.File.WriteAllBytesAsync(fullPath, imageBytes);
+                        }
+                        else if (image != null)
+                        {
+                            var folderName = Path.Combine("wwwroot", "images");
+                            var pathToSave = Path.Combine(Directory.GetCurrentDirectory(), folderName);
+                            if (!Directory.Exists(pathToSave))
+                            {
+                                Directory.CreateDirectory(pathToSave);
+                            }
+
+                            newFileName = ContentDispositionHeaderValue.Parse(image.ContentDisposition).FileName.Trim('"');
+                            var fullPath = Path.Combine(pathToSave, newFileName);
+
+                            using (var stream = new FileStream(fullPath, FileMode.Create))
+                            {
+                                image.CopyTo(stream);
+                            }
+                        }
+
+                        dataResult = await _UtilisateurService.Update(newFileName ?? imageName,
+                                                                      nom,
+                                                                      prenom,
+                                                                      mail,
+                                                                      telephone,
+                                                                      id_profil,
+                                                                      id_decoupagecommercial,
+                                                                      id_entity,
+                                                                      genre,
+                                                                      id,
+                                                                      id_user_pere);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+
+        [HttpPost, Route("Delete"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Delete(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.Delete(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Delete", "Delete user", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("Logout"), Produces("application/json")]
+        [Authorize]
+        public async Task<object> Logout(Object record)
+            {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try 
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.Logout(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "Logout", "Logout user", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+        [HttpPost, Route("UpdatePassWord"), Produces("application/json")]
+        public async Task<object> UpdatePassWord(Object record)
+        {
+            DataSourceResult dataResult = new DataSourceResult();
+            UtilisateurService _UtilisateurService = new UtilisateurService(_context);
+            CustomHelper customHelper = new CustomHelper(_context);
+            try
+            {
+                dataResult = customHelper.CheckHeaderRequest(Request);
+
+                if (dataResult.codeReponse != CodeReponse.unauthorized
+                    && dataResult.codeReponse != CodeReponse.unauthorizedIP
+                    && dataResult.codeReponse != CodeReponse.error
+                    && dataResult.codeReponse != CodeReponse.errorInvalidParams
+                    && dataResult.codeReponse != CodeReponse.errorMissingAllParams
+                    && dataResult.codeReponse != CodeReponse.errorInvalidMissingParams)
+                {
+                    dataResult = await _UtilisateurService.UpdatePassWord(record);
+                }
+            }
+            catch (Exception ex)
+            {
+                dataResult.codeReponse = CodeReponse.error;
+                dataResult.msg = (ex.InnerException == null) ? ex.Message : ex.InnerException.Message;
+                await new LogHelper(_context).logException(ex, this.GetType().Name, MethodBase.GetCurrentMethod().Name);
+            }
+            finally
+            {
+                _UtilisateurService = null;
+                customHelper = null;
+            }
+
+            LoggingHelper.LogRequest(this.GetType().Name, "UpdatePassWord", "Update password", record,HttpContext);
+            return JsonConvert.SerializeObject(dataResult);
+        }
+
+    }
+}

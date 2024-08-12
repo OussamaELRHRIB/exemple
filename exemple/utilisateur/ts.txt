@@ -1,0 +1,715 @@
+import { environment } from '../../../../environments/environment.prod';
+import { Component, ElementRef, OnInit, ViewChild } from "@angular/core";
+import { GridDataResult } from "@progress/kendo-angular-grid";
+import { FormControl, FormGroup, Validators } from "@angular/forms";
+import { utilisateurService } from "../../../core/Metier/utilisateur.service";
+import { entityService } from "../../../core/Metier/entity.service";
+import { villeService } from "../../../core/Metier/ville.service";
+import { decoupagecommercialService } from "../../../core/Metier/decoupagecommercial.service";
+import { SortDescriptor, State } from "@progress/kendo-data-query";
+import Swal from "sweetalert2";
+import { ActivatedRoute } from "@angular/router";
+import { profilService } from "src/app/core/Metier/profil.service";
+import { StoreService } from "src/app/core/Metier/store.service";
+import { SafeUrl, DomSanitizer } from "@angular/platform-browser";
+import { $ } from "protractor";
+import { ConfirmEventType } from "primeng/api";
+
+@Component({
+  selector: "app-utilisateur",
+  templateUrl: "./utilisateur.component.html",
+  styleUrls: ["./utilisateur.component.scss"],
+})
+
+export class utilisateurComponent implements OnInit {
+  @ViewChild("image") fileUploader: ElementRef;
+  InputVar: ElementRef;
+  isOpenSearchForm: boolean = false;
+  infosutilisateur: FormGroup;
+  FormUserPWD: FormGroup;
+  infosutilisateurSearch: FormGroup;
+  displayutilisateur: boolean = false;
+  informationsutilisateur: any;
+  datautilisateur: GridDataResult;
+  datauser: any = [];
+  isgrid: boolean = false;
+  listeutilisateur: any[] = [];
+  is_loading: boolean = false;
+  IsFiledForm: boolean = false;
+  IsFiledFormSearch: boolean = false;
+  issuperadmine: boolean = false;
+  isadmine: boolean = false;
+  ismanager: boolean = false;
+  msgReponse = "";
+  isprofil: boolean = false;
+  liste_profil: any[] = [];
+  liste_entity: any[] = [];
+  liste_ville: any[] = [];
+  liste_decoupagecommercial: any[] = [];
+  liste_filter: any[] = [];
+  IsFiledUserPWD: boolean = false;
+  _shownuser: boolean = false;
+  dataRow: any;
+  _shownAct: Boolean = false;
+  _shownPass: Boolean = false;
+  _shownConfpass: Boolean = false;
+  isHisPassword: boolean = false;
+  idUser: string = "";
+  ispop: boolean = false;
+  showDialogchangePWD: boolean = false;
+  showmdp: boolean = false;
+  appliquefilter: boolean = true;
+  liste_genre: any[] = [];
+  //Gestion du tri
+  sortgridutilisateur: SortDescriptor[] = [
+    {
+      field: "id",
+      dir: "desc",
+    },
+  ];
+
+  uploadedFiles: any[] = [];
+  selectedImageIndex: number = -1;
+  currentIndex: number = 1;
+  imageUser: any = [];
+  showImage: boolean = false;
+
+  //Paramètres par défaut du grid
+  gridStateutilisateur: State = {
+    sort: this.sortgridutilisateur,
+    skip: 0,
+    take: 10,
+  };
+
+  user_id: any;
+  profil: any;
+  imageUrl: any;
+  
+
+  //Constructeur
+  constructor(
+    private sanitizer: DomSanitizer,
+    private storeService: StoreService,
+    private utilisateurService: utilisateurService,
+    public _route: ActivatedRoute,
+    private profilService: profilService,
+    private entityService: entityService,
+    private villeService: villeService,
+    private decoupagecommercialService: decoupagecommercialService,
+  ) {
+
+    const passwordPattern = /^(?=.*\d|[^0-9])(?=.*[a-z])(?=.*[A-Z])(?=.*[\W_]).{8,}$/;
+    //Validateurs
+    this.infosutilisateur = new FormGroup({
+      id: new FormControl(0),
+      nom: new FormControl(null, [
+        Validators.required,
+        Validators.maxLength(50),
+      ]),
+      prenom: new FormControl(null, [
+        Validators.required,
+        Validators.maxLength(50),
+      ]),
+      mail: new FormControl(null, [
+        Validators.maxLength(50),
+        Validators.required,
+      ]),
+      telephone: new FormControl(null, [
+        Validators.maxLength(50),
+        Validators.required,
+      ]),
+      genre: new FormControl(null, [Validators.required]),
+      id_profil: new FormControl(null, [Validators.required]),
+      id_entity: new FormControl(null),
+      id_user_pere: new FormControl(null),
+      id_decoupagecommercial: new FormControl(null),
+      password: new FormControl(null, [Validators.required]),
+      image: new FormControl("default-image-user.jpg"),
+    });
+
+    this.infosutilisateurSearch = new FormGroup({
+      nom: new FormControl(null, [Validators.maxLength(50)]),
+      prenom: new FormControl(null, [Validators.maxLength(50)]),
+      mail: new FormControl(null, [Validators.maxLength(50)]),
+      id_profil: new FormControl(null),
+    });
+
+    this.FormUserPWD = new FormGroup({
+      currentPassword: new FormControl("", [Validators.minLength(8), Validators.required]),
+      password1: new FormControl("", [Validators.pattern(passwordPattern), Validators.required]),
+      password2: new FormControl("", [Validators.pattern(passwordPattern), Validators.required]),
+    });
+    this.idUser = this.storeService.get_DataSession("user_id");
+    this.profil = this.storeService.get_DataSession("id_profil");
+    if (this.profil == environment.role_Manager) {
+      this.issuperadmine = true;
+      this.appliquefilter =false;
+  
+    }else if (this.profil == environment.role_Admin){
+      this.isadmine = true;
+      this.appliquefilter =true;
+    }else{
+      this.ismanager = true
+      this.appliquefilter =true;
+    }
+
+    this.liste_genre =[
+      { "id": 0, "label": "Homme" },
+      { "id": 1, "label": "Femme" },
+    ]
+  }
+
+  //Init du constructeur
+  ngOnInit(): void {
+
+    this.searchutilisateur();
+    this.GetListdecoupagecommercial();
+    this.user_id = this._route.snapshot.params["user_id?"];
+
+    if (this.user_id) {
+      this.showUpdate(this.user_id, this.profil);
+    }
+  }
+
+  toggleuser() {
+    this._shownuser = !this._shownuser;
+  }
+
+  //Méthode pour validation du form search
+  get S() {
+    return this.infosutilisateurSearch.controls;
+  }
+
+  //Méthode pour validation du form ajout & modification
+  get F() {
+    return this.infosutilisateur.controls;
+  }
+
+  get FA() {
+    return this.FormUserPWD.controls;
+  }
+
+  //Méthode pour récupérer les enregistrements de type utilisateur
+  getDatautilisateur() {
+    let body;
+    //On appelle le service
+    this.utilisateurService.getAll(body).subscribe((res) => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+      if (json["codeReponse"] == 200) {
+        this.datautilisateur = {
+          data: json["data"],
+          total: json["TotalRows"],
+        };
+      }
+    });
+  }
+
+  // liste des profils
+  GetListprofil() {
+    //On appelle le service
+    this.profilService.getAll().subscribe((res) => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+
+      if (json["data"]) {
+        this.liste_profil = json["data"];
+      }
+
+      if (this.profil == environment.role_Admin) {
+        this.liste_filter = this.liste_profil.filter(
+          (x) => x.label != "Super Admin"
+        );
+        this.liste_profil = this.liste_filter;
+      }
+    });
+  }
+
+  // liste des profils
+  GetListentity() {
+    //On appelle le service
+    this.entityService.getAll().subscribe((res) => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+
+      if (json["data"]) {
+        this.liste_entity = json["data"];
+      }
+    });
+  }
+
+  //Méthode pour rechercher les enregistrements de type utilisateur
+  searchutilisateur() {
+    this.is_loading = true;
+
+    if (this.infosutilisateurSearch.invalid) {
+      this.IsFiledFormSearch = true;
+      this.is_loading = false;
+    } else {
+      let body: any;
+
+      //Paramètres de la recherche
+      if (this.issuperadmine == true) {
+        body = {
+          nom:
+            this.infosutilisateurSearch.value.nom != null
+              ? this.infosutilisateurSearch.value.nom
+              : "",
+          prenom:
+            this.infosutilisateurSearch.value.prenom != null
+              ? this.infosutilisateurSearch.value.prenom
+              : "",
+          mail:
+            this.infosutilisateurSearch.value.mail != null
+              ? this.infosutilisateurSearch.value.mail
+              : "",
+          id_profil:
+            this.infosutilisateurSearch.value.id_profil != null
+              ? this.infosutilisateurSearch.value.id_profil
+              : "",
+          take: this.gridStateutilisateur.take,
+          skip: this.gridStateutilisateur.skip,
+          field: this.gridStateutilisateur.sort[0].field,
+          order: this.gridStateutilisateur.sort[0].dir,
+        };
+      } else {
+        body = {
+          id_user: this.idUser,
+          nom:
+            this.infosutilisateurSearch.value.nom != null
+              ? this.infosutilisateurSearch.value.nom
+              : "",
+          prenom:
+            this.infosutilisateurSearch.value.prenom != null
+              ? this.infosutilisateurSearch.value.prenom
+              : "",
+          mail:
+            this.infosutilisateurSearch.value.mail != null
+              ? this.infosutilisateurSearch.value.mail
+              : "",
+          id_profil:
+            this.infosutilisateurSearch.value.id_profil != null
+              ? this.infosutilisateurSearch.value.id_profil
+              : "",
+          take: this.gridStateutilisateur.take,
+          skip: this.gridStateutilisateur.skip,
+          field: this.gridStateutilisateur.sort[0].field,
+          order: this.gridStateutilisateur.sort[0].dir,
+        };
+      }
+
+      //On appelle le service
+      this.utilisateurService.search(body).subscribe((res) => {
+        //On parse le json
+        var json = JSON.parse(res.toString());
+
+        if (json["codeReponse"] == 200) {
+          this.datautilisateur = {
+            data: json["data"],
+            total: json["TotalRows"],
+          };
+
+          if (this.profil == environment.role_Manager) {
+            this.datautilisateur;
+          } else {
+            this.datauser = this.datautilisateur.data.filter(
+              (x) => x.profil != "Super Admin"
+            );
+            this.datautilisateur = this.datauser;
+          }
+        }
+
+        this.is_loading = false;
+      });
+    }
+  }
+
+// Function to convert a file to Base64
+convertFileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+}
+
+// Méthode pour ajouter ou modifier un enregistrement de type utilisateur
+addOrUpdateutilisateur(files) {
+  // Paramètres de la recherche
+  let id = this.infosutilisateur.value.id;
+  this.is_loading = true;
+
+  if (this.infosutilisateur.invalid) {
+    this.IsFiledForm = true;
+    this.is_loading = false;
+  } else {
+    // Si id à 0, insert
+    if (id == 0 || id == null) {
+      // Paramètres d'appel du service d'insertion
+      let fileToUpload = <File>files[0];
+      const formData = new FormData();
+
+      if (fileToUpload) {
+        this.convertFileToBase64(fileToUpload).then((base64: string) => {
+          formData.append("image", base64);
+          this.submitForm(formData);
+        }).catch(error => {
+          this.is_loading = false;
+          this.msgReponse = "Une erreur a eu lieu lors de la conversion du fichier !";
+        });
+      } else {
+        formData.append("imageName", this.infosutilisateur.value.image);
+        this.submitForm(formData);
+      }
+    }
+    // Modification sinon
+    else {
+      // Paramètres d'appel du service d'update
+      let fileToUpload = <File>files[0];
+      const formData = new FormData();
+
+      if (fileToUpload) {
+        this.convertFileToBase64(fileToUpload).then((base64: string) => {
+          formData.append("image", base64);
+          this.submitForm(formData, true);
+        }).catch(error => {
+          this.is_loading = false;
+          this.msgReponse = "Une erreur a eu lieu lors de la conversion du fichier !";
+        });
+      } else {
+        formData.append("imageName", this.infosutilisateur.value.image);
+        this.submitForm(formData, true);
+      }
+    }
+  }
+}
+
+submitForm(formData: FormData, isUpdate: boolean = false) {
+  formData.append("nom", this.infosutilisateur.value.nom);
+  formData.append("prenom", this.infosutilisateur.value.prenom);
+  formData.append("mail", this.infosutilisateur.value.mail);
+  formData.append("id_profil", this.infosutilisateur.value.id_profil);
+  formData.append("genre", this.infosutilisateur.value.genre);
+  formData.append("telephone", this.infosutilisateur.value.telephone);
+  formData.append("id_entity", this.infosutilisateur.value.id_entity);
+  formData.append("password", this.infosutilisateur.value.password);
+  formData.append("id_user_pere", this.infosutilisateur.value.id_user_pere);
+  formData.append("user_id", this.idUser);
+  formData.append("id_decoupagecommercial", this.infosutilisateur.value.id_decoupagecommercial);
+
+  if (isUpdate) {
+    formData.append("id", this.infosutilisateur.value.id);
+    this.utilisateurService.update(formData).subscribe((res) => {
+      this.handleResponse(res);
+    });
+  } else {
+    this.utilisateurService.insert(formData).subscribe((res) => {
+      this.handleResponse(res);
+    });
+  }
+}
+
+handleResponse(res: any) {
+  this.is_loading = false;
+  res = JSON.parse(res);
+  if (res["codeReponse"] == 200) {
+    this.searchutilisateur();
+    this.displayutilisateur = false;
+    Swal.fire({
+      icon: "success",
+      title: "Enregistrement " + (res["isUpdate"] ? "modifié" : "ajouté") + " avec succès",
+      showConfirmButton: false,
+      timer: 2000,
+    });
+  } else {
+    this.msgReponse = "Une erreur a eu lieu ! Veuillez essayer de nouveau.";
+  }
+}
+
+  //Méthode pour récupérer le détail d'un enregistrement de type utilisateur à partir de son id
+  getutilisateurById(id) {
+    //Paramètres d'appel du service de récupération de détail de l'enregistrement de type utilisateur
+    let body = {
+      id: id,
+    };
+
+    //On appelle le service de récupération de détail de l'enregistrement de type utilisateur
+    this.utilisateurService.load(body).subscribe((res) => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+
+      if (json["codeReponse"] == 200) {
+        this.informationsutilisateur = "Modification utilisateur";
+        this.displayutilisateur = true;
+
+        //On parse data
+        var data = JSON.parse(json["data"]);
+        this.uploadedFiles = [];
+
+        //On remplit les champs de la popup de modification
+        this.infosutilisateur.get("id").setValue(data.id);
+        this.infosutilisateur.get("nom").setValue(data.nom);
+        this.infosutilisateur.get("prenom").setValue(data.prenom);
+        this.infosutilisateur.get("telephone").setValue(data.telephone);
+        this.infosutilisateur.get("mail").setValue(data.mail);
+        this.infosutilisateur.get("id_profil").setValue(data.id_profil);
+        this.infosutilisateur.get("genre").setValue(data.genre);
+        this.infosutilisateur.get("id_entity").setValue(data.id_entity);
+        this.infosutilisateur.get("id_user_pere").setValue(data.id_user_pere);
+        this.infosutilisateur.get("id_decoupagecommercial").setValue(data.id_decoupagecommercial);
+        
+
+        this.infosutilisateur
+          .get("image")
+          .setValue(data.image != "null" ? data.image : "default-image.png");
+
+        this.imageUrl = data.imageUrl;
+
+   
+      
+      }
+    });
+  }
+
+  //Méthode pour afficher/masquer le div filtrer
+  toggleSearchPanel() {
+    this.GetListprofil();
+    this.GetListentity();
+    this.isOpenSearchForm = !this.isOpenSearchForm;
+  }
+
+  GetListdecoupagecommercial() {
+    //On appelle le service
+    this.decoupagecommercialService.getAll().subscribe((res) => {
+      //On parse le json
+      var json = JSON.parse(res.toString());
+
+      if (json["data"]) {
+        this.liste_decoupagecommercial = json["data"];
+      }
+    });
+  }
+
+
+  //Méthode pour afficher la popup d'ajout de utilisateur
+  showAdd() {
+    this.GetListprofil();
+    this.GetListentity();
+    this.infosutilisateur.controls["password"].clearValidators();
+
+    this.infosutilisateur.controls["password"].setValidators([
+      Validators.required,
+    ]);
+    
+    this.infosutilisateur.controls["password"].updateValueAndValidity();
+    this.IsFiledForm = false;
+    this.showmdp = true;
+    this.msgReponse = "";
+
+    this.infosutilisateur.reset();
+
+    if (this.profil != environment.role_Manager) {
+      this.issuperadmine = false;
+    }
+
+
+    this.informationsutilisateur = "Ajout Utilisateur";
+    this.displayutilisateur = true;
+  }
+
+  //Méthode pour afficher la popup de confirmation de modification
+  showUpdate(id, profilgrid) {
+    this.GetListprofil();
+    this.GetListentity();
+    this.infosutilisateur.controls["password"].clearValidators();
+    this.infosutilisateur.controls["password"].updateValueAndValidity();
+
+    //  this.infosutilisateur.get("password").setValue(this.infosutilisateur.get('password').setValue(data.password));
+    if (this.profil != environment.role_Manager) {
+      this.issuperadmine = false;
+    }
+
+    if (this.profil == environment.role_Manager || this.profil == environment.role_Admin) {
+      this.isprofil = false;
+    } else {
+      if (this.profil != environment.role_Manager || this.profil != environment.role_Admin) {
+        this.isprofil = true;
+      }
+    }
+
+    this.IsFiledForm = false;
+    this.showmdp = false;
+    this.msgReponse = "";
+    this.getutilisateurById(id);
+    this.informationsutilisateur = "Modification Utilisateur";
+    this.displayutilisateur = true;
+  }
+
+  sanitize(url: string): SafeUrl {
+    return this.sanitizer.bypassSecurityTrustUrl(url);
+  }
+
+  showLightbox(index, image) {
+    this.selectedImageIndex = index;
+    this.showImage = true;
+
+    this.imageUser = [
+      {
+        image: image,
+      },
+    ];
+  }
+
+  closeEventHandler() {
+    this.showImage = false;
+    this.currentIndex = -1;
+  }
+
+
+  //Méthode pour supprimer un enregistrement de type utilisateur
+  deleteutilisateur(id) {
+    //Paramètres d'appel du service de suppression
+    let body = {
+      user_id :this.user_id,
+      id: id,
+    };
+
+    //On affiche la popup de confirmation
+    Swal.fire({
+      title: "Êtes-vous sûrs de vouloir supprimer cet enregistrement ?",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#689F38",
+      cancelButtonColor: "#d33",
+      cancelButtonText: '<i class="pi pi-times-circle"></i>  Annuler',
+      confirmButtonText: '<i class="pi pi-check-circle"></i> Valider',
+      reverseButtons: true,
+    }).then((result) => {
+      //Si l'utilisateur confirme
+      if (result.isConfirmed) {
+        //On appelle le service de suppression
+        this.utilisateurService.delete(body).subscribe((res) => {
+          //On parse le json
+          var json = JSON.parse(res.toString());
+
+          //Si réponse ok
+          if (json["codeReponse"] == 200) {
+            //On rafraichit les données du grid
+            this.searchutilisateur();
+            this.displayutilisateur = false;
+
+            //On affiche un popup de confirmation de la suppression
+            Swal.fire({
+              icon: "success",
+              title: "Enregistrement supprimé avec succès !",
+              showConfirmButton: false,
+              timer: 2000,
+            });
+          }
+        });
+      }
+    });
+  }
+
+  //Méthode pour rafraichir le grid
+  onStateChangeutilisateur(state: State) {
+    this.gridStateutilisateur = state;
+    this.searchutilisateur();
+  }
+
+  togglePassAct() {
+    this._shownAct = !this._shownAct;
+  }
+
+  togglePass() {
+    this._shownPass = !this._shownPass;
+  }
+
+  toggleConfpass() {
+    this._shownConfpass = !this._shownConfpass;
+  }
+
+  ShowDialogUpdatePWD(e: any) {
+    this.IsFiledUserPWD = false;
+    this.FormUserPWD.reset(); //$ init form change password
+    this.dataRow = e; //$ affect row selected to form change password
+
+    if (this.idUser == this.dataRow.id) {
+      //$ check if the user wants to change his password
+      this.isHisPassword = true;
+    } else {
+      this.isHisPassword = false;
+    }
+
+    this.showDialogchangePWD = true;
+  }
+
+  closeDialogPWD() {
+    this.showDialogchangePWD = false;
+  }
+
+  changePWD() {
+    this.IsFiledUserPWD = true;
+
+    if (this.isHisPassword) {
+      if (!this.FormUserPWD.valid) return; // check if valid form
+
+      let userPassword = this.storeService.get_DataSession("PWDU");
+      let formPassword = this.FormUserPWD.value.currentPassword;
+      let check = formPassword == userPassword ? true : false;
+
+      if (check) {
+        if (
+          this.FormUserPWD.value.password1 === this.FormUserPWD.value.password2
+        ) {
+          this.saveNewPassword(this.FormUserPWD.value.password1);
+        } else {
+          this.storeService.Error("Les mots de passe ne correspondent pas !");
+        }
+      } else {
+        this.storeService.Error("Le mot de passe actuel est incorrect !");
+      }
+    } else {
+      if (
+        this.FormUserPWD.get("password1").valid &&
+        this.FormUserPWD.get("password2").valid
+      ) {
+        if (
+          this.FormUserPWD.value.password1 === this.FormUserPWD.value.password2
+        ) {
+          this.saveNewPassword(this.FormUserPWD.value.password1);
+          this.showDialogchangePWD = false;
+        } else {
+          this.storeService.Error("Les mots de passe ne correspondent pas !");
+        }
+      }
+    }
+  }
+
+  private saveNewPassword(password: any) {
+    let body = {
+      id: this.dataRow.id,
+      newPassword: password,
+    };
+
+    this.utilisateurService.changePWD(body).subscribe((res) => {
+      this.showDialogchangePWD = false;
+
+      let body = [
+        {
+          key: "PWDU",
+          value: this.FormUserPWD.value.password1,
+        },
+      ];
+
+      this.storeService.set_DataSession(body);
+      this.storeService.Error(
+        "Information",
+        "success",
+        2000,
+        "Votre mot de passe a été modifié avec succès"
+      );
+    });
+  }
+}

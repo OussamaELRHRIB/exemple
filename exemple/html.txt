@@ -1,0 +1,103 @@
+<div class="progressSpinner" *ngIf="is_loading">
+  <p-progressSpinner></p-progressSpinner>
+</div>
+<nav aria-label="breadcrumb">
+  <ol class="breadcrumb" style="padding: 5px 14px;">
+    <diV class="col-10 d-flex p-1 pt-2">
+      <li class="breadcrumb-item"><a [routerLink]="['/']"><i class="fa fa-home mr-2" aria-hidden="true"></i>{{ 'buttons.dossiers.Accueil' | translate }}</a>
+      </li>
+      <li class="breadcrumb-item"><a [routerLink]="['/parametrage/entity']">{{ 'buttons.dossiers.Parametrage' | translate }}</a></li>
+      <li class="breadcrumb-item active"><a>{{ 'buttons.dossiers.Gestion' | translate }}</a></li>
+    </diV>
+    <div class="col-2 d-flex p-0" style="text-align: right; justify-content: flex-end;">
+      <button type="submit" class="btn btn-aqua" (click)="toggleSearchPanel()" title="{{ 'buttons.dossiers.Filtrer' | translate }}">
+        <i class="fa fa-angle-down mr-2" aria-hidden="true"
+          [ngStyle]="{'transform': isOpenSearchForm ? 'rotate(90deg)' : ''}"></i>{{ 'buttons.dossiers.Filtrer' | translate }}
+      </button>&nbsp;
+      <button type="button" class="btn btn-green" (click)="showAdd()" title="{{ 'buttons.dossiers.Ajouter' | translate }}">
+        <i class="fa fa-plus-circle mr-1"></i> {{ 'buttons.dossiers.Ajouter' | translate }}
+      </button>
+    </div>
+  </ol>
+</nav>
+
+<p-card styleClass="cm-p-card cm-p-card-flitrer np-btm pad-filter mb-2" *ngIf="isOpenSearchForm">
+  <form [formGroup]="infosentitySearch">
+    <div class="row">
+      <div class="col-md-3">
+        <input placeholder="{{ 'buttons.dossiers.Nom' | translate }}" type="text" class="form-control" formControlName="label"
+          pTooltip="{{ 'buttons.dossiers.Nom' | translate }}" tooltipPosition="top">
+        <label class="label-input text-danger" *ngIf="IsFiledFormSearch && S.label.errors">{{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+      </div>
+      <div class="btn-serach col-md-9 text-right">
+        <button type="submit" class="btn btn-aqua" (click)="searchentity()" title="{{ 'buttons.dossiers.Rechercher' | translate }}">
+          <i class="fa fa-search mr-1"></i>{{ 'buttons.dossiers.Rechercher' | translate }}
+        </button>
+      </div>
+    </div>
+  </form>
+</p-card>
+<p-card class="space-bottom-statut">
+  <kendo-grid style="min-height: calc(100vh - 260px) !important;" [data]="dataentity"
+    [skip]="gridStateentity.skip" [pageSize]="gridStateentity.take"
+    [pageable]="{pageSizes:[5,10,15,20,50]}" [navigable]="true" [sortable]="true" [sort]="gridStateentity.sort"
+    (dataStateChange)="onStateChangeentity($event)">
+    <kendo-grid-messages pagerItems="{{ 'buttons.dossiers.Resultats' | translate }}" pagerOf="{{ 'buttons.dossiers.Sur' | translate }}" pagerFirstPage="{{ 'buttons.dossiers.Premiere_Page' | translate }}"
+      pagerLastPage="{{ 'buttons.dossiers.Derniere_Page' | translate }}" pagerNextPage="{{ 'buttons.dossiers.Suivant' | translate }}" pagerPreviousPage="{{ 'buttons.dossiers.Precedent' | translate }}"
+      pagerItemsPerPage="{{ 'buttons.dossiers.Resultats_Par_Page' | translate }}">
+    </kendo-grid-messages>
+    <ng-template kendoGridNoRecordsTemplate>
+      {{ 'buttons.dossiers.Aucun_Enregistrement_Trouve' | translate }}
+    </ng-template>
+    <kendo-grid-column field="label" title="{{ 'buttons.dossiers.Nom' | translate }}">
+      <ng-template kendoGridCellTemplate let-dataItem>
+        <span style="cursor: pointer;" (click)="showUpdate(dataItem.id)">
+          {{dataItem.label}}
+        </span>
+      </ng-template>
+    </kendo-grid-column>
+    <kendo-grid-command-column title="" width="120">
+      <ng-template kendoGridCellTemplate let-dataItem>
+        <div class="text-left">
+          <i class="pi si pi-pencil addpadd" tooltipPosition="top" pTooltip="{{ 'buttons.dossiers.Modifier' | translate }}"
+            (click)="showUpdate(dataItem.id)"></i>
+          <i pTooltip="{{ 'buttons.dossiers.Supprimer' | translate }}" tooltipposition="top" (click)="deleteentity(dataItem.id)"
+            class="pi si pi-trash addpadd ng-star-inserted"></i>
+        </div>
+      </ng-template>
+    </kendo-grid-command-column>
+  </kendo-grid>
+</p-card>
+
+<p-dialog header="{{ 'buttons.dossiers.informationsutilisateur' | translate }}" [(visible)]="showentity" [modal]="true"
+  [style]="{'max-width': '950px', 'background': 'white', 'min-width': '515px'}" [draggable]="false">
+  <div class="modal-body" style="padding: 1px !important;">
+    <form [formGroup]="infosentity" (ngSubmit)="addOrUpdateentity()">
+      <div class="row">
+        <div class="col-md-12">
+          <label class="col-form-label gras">{{ 'buttons.dossiers.Nom' | translate }} *</label>
+          <div class="input-group">
+            <input class="form-control" formControlName="label" type="text">
+          </div>
+          <label class="label-input text-danger" *ngIf="IsFiledForm && F.label.errors?.required">{{ 'buttons.dossiers.Obligatoire' | translate }}</label>
+          <label class="label-input text-danger" *ngIf="IsFiledForm && F.label.errors?.maxlength">{{ 'buttons.dossiers.erreur_max_longueur' | translate }}</label>
+        </div>
+      </div>
+      <div class="d-flex justify-content-between mt-5">
+        <div *ngIf="msgReponse" class="alert alert-danger" role="alert">
+          {{msgReponse}}
+        </div>
+        <div *ngIf="!msgReponse"></div>
+        <div class="d-flex justify-content-end">
+          <div class="mr-2">
+            <button type="button" class="btn btn-red" (click)="showentity = false"><i
+                class="pi pi-times-circle"></i> {{ 'buttons.dossiers.Annuler' | translate }}</button>
+          </div>
+          <div>
+            <button type="submit" class="btn btn-green"><i class="pi pi-check-circle"></i> {{ 'buttons.dossiers.Valider' | translate }}</button>
+          </div>
+        </div>
+      </div>
+    </form>
+  </div>
+</p-dialog>

@@ -1,0 +1,117 @@
+import { ApiService } from '../ApiService/api-service';
+import { Injectable } from '@angular/core';
+import { environment } from 'src/environments/environment';
+import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { catchError } from 'rxjs/operators';
+import { Observable } from 'rxjs/internal/Observable';
+import { Router } from '@angular/router';
+import Swal from 'sweetalert2'
+
+@Injectable({
+  providedIn: 'root'
+})
+
+export class entityService 
+{
+  //Constructeur par défaut
+  constructor(private http: HttpClient, private router: Router,private apiService: ApiService) 
+  { 
+  }
+
+  //Méthode pour retourner la liste des enregistrements de type entity
+  getAll() {
+    //On appelle l'api du get
+     const apiUrl = this.apiService.getApiBaseUrl();
+    return this.http
+      .post(apiUrl + "entity/GetAll", {}, {
+        headers:this.apiService.createAuthorizationHeader() 
+      })
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          this.apiService.errorMessage(err.status);
+          return Observable.throw(err);
+        })
+      );
+  }
+
+  //Méthode pour rechercher des enregistrements de type entity
+  search(data : any) {
+    //On appelle l'api du get
+     const apiUrl = this.apiService.getApiBaseUrl();
+    return this.http
+      .post(apiUrl + "entity/Search", data, {
+        headers:this.apiService.createAuthorizationHeader() 
+      })
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          this.apiService.errorMessage(err.status);
+          return Observable.throw(err);
+        })
+      );
+  }
+
+  //Méthode qui récupère le détail de l'enregistrement de type entity
+  load(data : any) {
+    //On appelle l'api du load
+     const apiUrl = this.apiService.getApiBaseUrl();
+    return this.http
+      .post(apiUrl + "entity/Load", data, {
+        headers: this.apiService.createAuthorizationHeader()
+      })
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          this.apiService.errorMessage(err.status);
+          return Observable.throw(err);
+        })
+      );
+  }
+  
+  //Méthode qui permet de créer un enregistrement de type entity
+  insert(data: any) {
+    //On appelle l'api d'insert
+     const apiUrl = this.apiService.getApiBaseUrl();
+    return this.http
+      .post(apiUrl + "entity/Insert", data, {
+        headers: this.apiService.createAuthorizationHeader()
+      })
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          this.apiService.errorMessage(err.status);
+          return Observable.throw(err);
+        })
+      );
+  }
+  
+  //Méthode qui permet de mettre à jour un enregistrement de type entity
+  update(data: any) {
+    //On appelle l'api d'update
+     const apiUrl = this.apiService.getApiBaseUrl();
+    return this.http
+      .post(apiUrl + "entity/Update", data, {
+        headers: this.apiService.createAuthorizationHeader()
+      })
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          this.apiService.errorMessage(err.status);
+          return Observable.throw(err);
+        })
+      );
+  }
+
+  //Méthode qui permet de supprimer un enregistrement de type entity
+  delete(data: any) {
+    //On appelle l'api du delete
+     const apiUrl = this.apiService.getApiBaseUrl();
+    return this.http
+      .post(apiUrl + "entity/Delete", data, {
+        headers: this.apiService.createAuthorizationHeader()
+      })
+      .pipe(
+        catchError((err: HttpErrorResponse) => {
+          this.apiService.errorMessage(err.status);
+          return Observable.throw(err);
+        })
+      );
+  }
+
+}
